@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="KM Track — Controle de abastecimento, quilometragem e gastos do seu veículo." />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="KM Track" />
+  <meta name="application-name" content="KM Track" />
+  <meta name="msapplication-TileColor" content="#6366f1" />
+  <title>KM Track — Controle de Veículo</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- PWA Install Banner -->
+  <div class="install-banner" id="installBanner">
+    <div class="install-banner-content">
+      <img src="icon-192.png" class="install-banner-icon" alt="KM Track" />
+      <div class="install-banner-text">
+        <strong>Instalar KM Track</strong>
+        <span>Adicione à tela inicial para acesso rápido e uso offline</span>
+      </div>
+    </div>
+    <div class="install-banner-actions">
+      <button class="btn btn-primary btn-sm" id="btnInstallApp">⬇️ Instalar</button>
+      <button class="btn btn-ghost btn-sm" id="btnDismissInstall">✕</button>
+    </div>
+  </div>
+
+  <!-- App Shell -->
+  <div id="app">
+
+    <!-- iOS Top Navbar (Blur/Glassmorphism) -->
+    <header class="ios-header" id="iosHeader">
+      <div class="ios-header-brand">
+        <span class="ios-logo">⛽</span>
+        <span class="ios-brand-text">KM Track</span>
+      </div>
+      <div class="ios-header-actions">
+        <button class="ios-vehicle-btn" id="iosVehicleBtn">
+          <span id="iosVehicleIcon">🚗</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+
+      <!-- ===== DASHBOARD ===== -->
+      <section class="page active" id="page-dashboard">
+        <div class="page-header">
+          <h1 class="page-title">Dashboard</h1>
+          <span class="page-subtitle" id="dashDate"></span>
+        </div>
+
+        <!-- Vehicle selector card -->
+        <div class="vehicle-quick-select" id="vehicleQuickSelect">
+          <p class="qs-label">Veículo ativo</p>
+          <div class="qs-buttons" id="qsButtons"></div>
+          <button class="btn btn-ghost btn-sm" id="btnAddVehicleQuick">+ Adicionar veículo</button>
+        </div>
+
+        <!-- Stats grid -->
+        <div class="stats-grid">
+          <div class="stat-card primary">
+            <div class="stat-icon">📏</div>
+            <div class="stat-info">
+              <span class="stat-value" id="statKmTotal">0</span>
+              <span class="stat-label">KM Total do Veículo</span>
+            </div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-icon">💰</div>
+            <div class="stat-info">
+              <span class="stat-value" id="statGastoTotal">R$ 0,00</span>
+              <span class="stat-label">Gasto Total em Combustível</span>
+            </div>
+          </div>
+          <div class="stat-card warning">
+            <div class="stat-icon">🛢️</div>
+            <div class="stat-info">
+              <span class="stat-value" id="statLitrosTotal">0 L</span>
+              <span class="stat-label">Litros Abastecidos</span>
+            </div>
+          </div>
+          <div class="stat-card info">
+            <div class="stat-icon">📈</div>
+            <div class="stat-info">
+              <span class="stat-value" id="statMediaConsumo">— km/L</span>
+              <span class="stat-label">Média de Consumo</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Last fill + KM log today -->
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Último Abastecimento</h2>
+            </div>
+            <div class="card-body" id="lastFillCard">
+              <div class="empty-state"><span>⛽</span><p>Nenhum abastecimento registrado.</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">KM de Hoje</h2>
+            </div>
+            <div class="card-body" id="kmTodayCard">
+              <div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monthly summary -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Resumo do Mês</h2>
+            <span class="badge badge-primary" id="monthLabel"></span>
+          </div>
+          <div class="card-body">
+            <div class="monthly-summary" id="monthlySummary">
+              <div class="month-stat">
+                <span class="ms-icon">💸</span>
+                <div class="ms-info">
+                  <span class="ms-value" id="msGasto">R$ 0,00</span>
+                  <span class="ms-label">Gasto em combustível</span>
+                </div>
+              </div>
+              <div class="month-stat">
+                <span class="ms-icon">🛢️</span>
+                <div class="ms-info">
+                  <span class="ms-value" id="msLitros">0 L</span>
+                  <span class="ms-label">Litros abastecidos</span>
+                </div>
+              </div>
+              <div class="month-stat">
+                <span class="ms-icon">⛽</span>
+                <div class="ms-info">
+                  <span class="ms-value" id="msAbast">0</span>
+                  <span class="ms-label">Abastecimentos</span>
+                </div>
+              </div>
+              <div class="month-stat">
+                <span class="ms-icon">📏</span>
+                <div class="ms-info">
+                  <span class="ms-value" id="msKm">0 km</span>
+                  <span class="ms-label">KM rodados (registrados)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== REGISTER FUEL ===== -->
+      <section class="page" id="page-register">
+        <div class="page-header">
+          <h1 class="page-title">Registrar Abastecimento</h1>
+          <span class="page-subtitle">Informe os dados do abastecimento</span>
+        </div>
+
+        <div class="card form-card">
+          <div class="card-body">
+            <form id="fuelForm" novalidate>
+              <input type="hidden" id="fuelEditId" value="" />
+
+              <div class="form-group">
+                <label class="form-label" for="fuelDate">Data</label>
+                <input type="date" id="fuelDate" class="form-input" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fuelKmTotal">Odômetro (KM total do veículo)</label>
+                <div class="input-group">
+                  <input type="number" id="fuelKmTotal" class="form-input" placeholder="Ex: 45230" min="0" step="1" required />
+                  <span class="input-suffix">km</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Tipo de combustível</label>
+                <div class="fuel-type-grid" id="fuelTypeGrid">
+                  <button type="button" class="fuel-btn active" data-type="gasolina">
+                    <span>⛽</span><span>Gasolina</span>
+                  </button>
+                  <button type="button" class="fuel-btn" data-type="alcool">
+                    <span>🌿</span><span>Álcool</span>
+                  </button>
+                  <button type="button" class="fuel-btn" data-type="diesel">
+                    <span>🛢️</span><span>Diesel</span>
+                  </button>
+                  <button type="button" class="fuel-btn" data-type="gnv">
+                    <span>💨</span><span>GNV</span>
+                  </button>
+                </div>
+                <input type="hidden" id="selectedFuelType" value="gasolina" />
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="fuelLiters">Litros abastecidos</label>
+                  <div class="input-group">
+                    <input type="number" id="fuelLiters" class="form-input" placeholder="Ex: 40.5" min="0" step="0.01" required />
+                    <span class="input-suffix">L</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="fuelPricePerLiter">Preço por litro</label>
+                  <div class="input-group">
+                    <span class="input-prefix">R$</span>
+                    <input type="number" id="fuelPricePerLiter" class="form-input" placeholder="Ex: 5.89" min="0" step="0.01" required />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fuelTotalCost">Valor total pago</label>
+                <div class="input-group">
+                  <span class="input-prefix">R$</span>
+                  <input type="number" id="fuelTotalCost" class="form-input" placeholder="Calculado automaticamente" min="0" step="0.01" />
+                </div>
+                <span class="form-hint">Preenchido automaticamente ou informe o valor total</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fuelStation">Posto de combustível (opcional)</label>
+                <input type="text" id="fuelStation" class="form-input" placeholder="Ex: Posto Shell Centro" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="fuelNotes">Observações (opcional)</label>
+                <textarea id="fuelNotes" class="form-input form-textarea" placeholder="Ex: Tanque cheio, viagem longa..."></textarea>
+              </div>
+
+              <div class="calc-preview" id="calcPreview" style="display:none;">
+                <div class="calc-row">
+                  <span>Custo por KM estimado</span>
+                  <span id="calcCostPerKm">—</span>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="btnClearFuel">Limpar</button>
+                <button type="button" class="btn btn-secondary" id="btnCancelEditFuel" style="display:none;">✕ Cancelar edição</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveFuel">💾 Salvar Abastecimento</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== KM REGISTER ===== -->
+      <section class="page" id="page-km">
+        <div class="page-header">
+          <h1 class="page-title">Registro de KM</h1>
+          <span class="page-subtitle">Registre a quilometragem diária</span>
+        </div>
+
+        <div class="card form-card">
+          <div class="card-body">
+            <form id="kmForm" novalidate>
+              <input type="hidden" id="kmEditId" value="" />
+              <div class="form-group">
+                <label class="form-label" for="kmDate">Data</label>
+                <input type="date" id="kmDate" class="form-input" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="kmStart">KM inicial (odômetro início do dia)</label>
+                <div class="input-group">
+                  <input type="number" id="kmStart" class="form-input" placeholder="Ex: 45200" min="0" step="1" />
+                  <span class="input-suffix">km</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="kmEnd">KM final (odômetro fim do dia)</label>
+                <div class="input-group">
+                  <input type="number" id="kmEnd" class="form-input" placeholder="Ex: 45430" min="0" step="1" />
+                  <span class="input-suffix">km</span>
+                </div>
+              </div>
+
+              <div class="km-preview" id="kmPreview" style="display:none;">
+                <span class="kmp-label">KM rodados hoje:</span>
+                <span class="kmp-value" id="kmDiffValue">0 km</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="kmPurpose">Finalidade da viagem</label>
+                <select id="kmPurpose" class="form-input form-select">
+                  <option value="pessoal">🏠 Pessoal</option>
+                  <option value="trabalho">💼 Trabalho</option>
+                  <option value="viagem">✈️ Viagem</option>
+                  <option value="outros">📦 Outros</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="kmNotes">Observações (opcional)</label>
+                <textarea id="kmNotes" class="form-input form-textarea" placeholder="Ex: Ida e volta ao trabalho..."></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="btnClearKm">Limpar</button>
+                <button type="button" class="btn btn-secondary" id="btnCancelEditKm" style="display:none;">✕ Cancelar edição</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveKm">💾 Salvar Registro</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Today's KM entries -->
+        <div class="card" style="margin-top: 1.5rem;">
+          <div class="card-header">
+            <h2 class="card-title">Registros de Hoje</h2>
+          </div>
+          <div class="card-body" id="kmTodayList">
+            <div class="empty-state"><span>📍</span><p>Nenhum registro ainda.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== HISTORY ===== -->
+      <section class="page" id="page-history">
+        <div class="page-header">
+          <h1 class="page-title">Histórico</h1>
+          <span class="page-subtitle">Todos os registros do veículo</span>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="fuel-history">⛽ Abastecimentos</button>
+          <button class="tab-btn" data-tab="km-history">📍 KM Diário</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar" id="histFilters">
+          <select class="form-input filter-select" id="filterMonth">
+            <option value="">Todos os meses</option>
+          </select>
+          <select class="form-input filter-select" id="filterFuelType">
+            <option value="">Todos os combustíveis</option>
+            <option value="gasolina">⛽ Gasolina</option>
+            <option value="alcool">🌿 Álcool</option>
+            <option value="diesel">🛢️ Diesel</option>
+            <option value="gnv">💨 GNV</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="btnClearFilters">✕ Limpar</button>
+        </div>
+
+        <!-- Fuel History Tab -->
+        <div class="tab-content active" id="fuel-history">
+          <div id="fuelHistoryList">
+            <div class="empty-state"><span>⛽</span><p>Nenhum abastecimento registrado.</p></div>
+          </div>
+        </div>
+
+        <!-- KM History Tab -->
+        <div class="tab-content" id="km-history">
+          <div id="kmHistoryList">
+            <div class="empty-state"><span>📍</span><p>Nenhum registro de KM.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== VEHICLES ===== -->
+      <section class="page" id="page-vehicles">
+        <div class="page-header">
+          <h1 class="page-title">Meus Veículos</h1>
+          <button class="btn btn-primary btn-sm" id="btnAddVehicle">+ Adicionar</button>
+        </div>
+
+        <div id="vehicleList">
+          <div class="empty-state"><span>🚗</span><p>Nenhum veículo cadastrado.<br>Clique em "Adicionar" para começar.</p></div>
+        </div>
+      </section>
+
+      <!-- ===== SETTINGS / BACKUP ===== -->
+      <section class="page" id="page-settings">
+        <div class="page-header">
+          <h1 class="page-title">Ajustes</h1>
+        </div>
+
+        <div class="card ios-list-group">
+          <div class="card-header"><h2 class="card-title">📦 Backup de Dados</h2></div>
+          <div class="card-body settings-section">
+            <p class="settings-desc">Exporte todos os seus dados em formato JSON para guardar localmente ou transferir para outro dispositivo.</p>
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btnExport">⬇️ Exportar Dados (JSON)</button>
+              <label class="btn btn-secondary" for="importFile">⬆️ Importar Dados (JSON)</label>
+              <input type="file" id="importFile" accept=".json" style="display:none;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card ios-list-group" style="margin-top:1.5rem;">
+          <div class="card-header"><h2 class="card-title">📊 Estatísticas Gerais</h2></div>
+          <div class="card-body">
+            <div class="settings-stats" id="settingsStats"></div>
+          </div>
+        </div>
+
+        <div class="card ios-list-group danger-zone" style="margin-top:1.5rem;">
+          <div class="card-header"><h2 class="card-title">🗑️ Zona de Perigo</h2></div>
+          <div class="card-body settings-section">
+            <p class="settings-desc danger-text">Apagar todos os registros de abastecimento e KM. Esta ação é irreversível!</p>
+            <div class="settings-actions">
+              <button class="btn btn-danger" id="btnClearAllData">🗑️ Limpar Todos os Dados</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- iOS Bottom Tab Bar -->
+    <nav class="ios-tab-bar" id="bottomTabBar">
+      <a href="#" class="tab-item active" data-page="dashboard" id="nav-dashboard">
+        <span class="tab-icon">🏠</span>
+        <span class="tab-label">Início</span>
+      </a>
+      <a href="#" class="tab-item" data-page="history" id="nav-history">
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">Histórico</span>
+      </a>
+      <!-- middle spacer for FAB to breathe -->
+      <div class="tab-spacer"></div>
+      <a href="#" class="tab-item" data-page="vehicles" id="nav-vehicles">
+        <span class="tab-icon">🚗</span>
+        <span class="tab-label">Veículos</span>
+      </a>
+      <a href="#" class="tab-item" data-page="settings" id="nav-settings">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">Ajustes</span>
+      </a>
+    </nav>
+  </div>
+
+  <!-- ===== MODALS ===== -->
+
+  <!-- Vehicle Modal -->
+  <div class="modal-backdrop" id="vehicleModalBackdrop">
+    <div class="modal" id="vehicleModal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="vehicleModalTitle">Adicionar Veículo</h2>
+        <button class="modal-close" id="closeVehicleModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="vehicleForm" novalidate>
+          <input type="hidden" id="vehicleId" />
+          <div class="form-group">
+            <label class="form-label" for="vehicleName">Nome do veículo *</label>
+            <input type="text" id="vehicleName" class="form-input" placeholder="Ex: Civic 2020" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="vehicleBrand">Marca</label>
+              <input type="text" id="vehicleBrand" class="form-input" placeholder="Ex: Honda" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="vehicleModel">Modelo</label>
+              <input type="text" id="vehicleModel" class="form-input" placeholder="Ex: Civic" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="vehicleYear">Ano</label>
+              <input type="number" id="vehicleYear" class="form-input" placeholder="Ex: 2020" min="1900" max="2099" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="vehiclePlate">Placa</label>
+              <input type="text" id="vehiclePlate" class="form-input" placeholder="Ex: ABC-1234" maxlength="8" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="vehicleKmInitial">KM atual do odômetro</label>
+            <div class="input-group">
+              <input type="number" id="vehicleKmInitial" class="form-input" placeholder="Ex: 45000" min="0" />
+              <span class="input-suffix">km</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ícone</label>
+            <div class="icon-picker" id="iconPicker">
+              <button type="button" class="icon-btn active" data-icon="🚗">🚗</button>
+              <button type="button" class="icon-btn" data-icon="🚕">🚕</button>
+              <button type="button" class="icon-btn" data-icon="🚙">🚙</button>
+              <button type="button" class="icon-btn" data-icon="🏎️">🏎️</button>
+              <button type="button" class="icon-btn" data-icon="🚐">🚐</button>
+              <button type="button" class="icon-btn" data-icon="🚚">🚚</button>
+              <button type="button" class="icon-btn" data-icon="🏍️">🏍️</button>
+              <button type="button" class="icon-btn" data-icon="🛻">🛻</button>
+            </div>
+            <input type="hidden" id="vehicleIcon" value="🚗" />
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="cancelVehicleModal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">💾 Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal-backdrop" id="confirmModalBackdrop">
+    <div class="modal modal-sm" id="confirmModal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="confirmTitle">Confirmar</h2>
+        <button class="modal-close" id="closeConfirmModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage"></p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancelConfirm">Cancelar</button>
+          <button class="btn btn-danger" id="okConfirm">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Floating Action Button -->
+  <button class="fab" id="fabNewFuel" title="Novo Abastecimento" aria-label="Novo Abastecimento">
+    <span class="fab-icon">⛽</span>
+    <span class="fab-label">Abastecer</span>
+  </button>
+
+  <script src="app.js"></script>
+</body>
+</html>

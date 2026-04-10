@@ -10,9 +10,32 @@
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[PWA] Service Worker registrado:', reg.scope))
+    navigator.serviceWorker.register('./sw.js?v=2')
+      .then(reg => {
+        console.log('[PWA] Service Worker registrado:', reg.scope);
+        // Detect update
+        reg.onupdatefound = () => {
+          const installingWorker = reg.installing;
+          installingWorker.onstatechange = () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content available, force refresh after a delay or just prompt
+              toast('Nova versão disponível! Atualizando...', 'info');
+              setTimeout(() => {
+                window.location.reload();
+              }, 2000);
+            }
+          };
+        };
+      })
       .catch(err => console.warn('[PWA] Falha ao registrar SW:', err));
+  });
+
+  // Ensure refresh on new worker activation
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
 }
 

@@ -1086,10 +1086,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('importFile').addEventListener('change', importData);
   document.getElementById('btnClearAllData').addEventListener('click', clearAllData);
 
-  // --- Mobile vehicle icon → go to vehicles
-  document.getElementById('mobileVehicle').addEventListener('click', () => navigateTo('vehicles'));
-  document.getElementById('vehicleSelectorMini').addEventListener('click', () => navigateTo('vehicles'));
-
   // --- Cancel edit fuel
   document.getElementById('btnCancelEditFuel').addEventListener('click', () => {
     document.getElementById('fuelForm').reset();

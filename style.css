@@ -111,6 +111,7 @@
 /* --- Reset & base --- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+@media (max-width: 480px) { html { font-size: 14px; } }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -261,7 +262,7 @@ input, textarea, select { font-family: inherit; }
 /* --- Main Content --- */
 .main-content {
   flex: 1;
-  padding: calc(60px + 1.5rem + env(safe-area-inset-top)) 1.5rem 1.5rem;
+  padding: calc(60px + 1rem + env(safe-area-inset-top)) 1rem 1.5rem;
   max-width: 600px;
   margin: 0 auto;
   width: 100%;
@@ -285,7 +286,7 @@ input, textarea, select { font-family: inherit; }
 .card { background: var(--surface); border-radius: var(--radius); margin-bottom: 1.5rem; overflow: hidden; }
 .card-header { padding: 1.25rem 1.25rem 0.5rem; }
 .card-title { font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.card-body { padding: 1rem 1.25rem; }
+.card-body { padding: 0.8rem 1rem; }
 
 /* iOS List Group (Settings Style) */
 .ios-list-group .card-body { padding: 0 1.25rem; }
@@ -295,10 +296,10 @@ input, textarea, select { font-family: inherit; }
 /* --- Stat Cards (Grid) --- */
 .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 2rem; }
 .stat-card {
-  padding: 1.25rem 1rem;
+  padding: 1rem 0.8rem;
   border-radius: var(--radius);
   background: var(--surface);
-  display: flex; flex-direction: column; gap: 0.5rem;
+  display: flex; flex-direction: column; gap: 0.4rem;
 }
 .stat-card.primary { background: linear-gradient(135deg, rgba(10,132,255,0.15), var(--surface)); }
 .stat-card.success { background: linear-gradient(135deg, rgba(50,215,75,0.15), var(--surface)); }
@@ -403,10 +404,10 @@ input, textarea, select { font-family: inherit; }
 /* --- Fab --- */
 .fab {
   position: relative;
-  top: -15px; /* "Pop out" effect */
+  top: -10px; /* "Pop out" effect */
   display: flex; align-items: center; justify-content: center;
-  height: 60px; width: 60px;
-  min-width: 60px;
+  height: 52px; width: 52px;
+  min-width: 52px;
   border-radius: 50%;
   background: var(--primary);
   color: #fff;
@@ -416,7 +417,7 @@ input, textarea, select { font-family: inherit; }
   margin: 0 5px;
 }
 .fab:active { transform: scale(0.92); box-shadow: 0 4px 12px rgba(10,132,255,0.3); }
-.fab-icon { font-size: 1.8rem; }
+.fab-icon { font-size: 1.5rem; }
 .fab-label { display: none; }
 
 /* Desktop adjustments */

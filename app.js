@@ -84,12 +84,7 @@ function initPWA() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    checkInstallPrompt();
   });
-
-  if (isIOS) {
-    checkInstallPrompt();
-  }
 
   if (btnDismiss) btnDismiss.addEventListener('click', () => {
     banner.style.display = 'none';
@@ -104,29 +99,36 @@ function initPWA() {
         banner.style.display = 'none';
       }
       deferredPrompt = null;
+    } else if (isIOS) {
+       alert("No Safari, toque no ícone de Compartilhar (caixa com seta) e depois escolha 'Adicionar à Tela de Início'.");
     }
   });
 }
 
-function checkInstallPrompt() {
+function suggestInstall() {
   if (isStandalone || localStorage.getItem('pwaDismissed') === 'true') return;
 
-  // Wait 5s to show, feels more natural
+  // Aguarda 1.5s após o login para ser menos invasivo
   setTimeout(() => {
     const banner = document.getElementById('installBanner');
     if (!banner) return;
     
-    banner.style.display = 'flex';
-    
-    if (isIOS) {
-      const iosTools = document.getElementById('iosInstallTools');
-      if (iosTools) iosTools.style.display = 'block';
-      const btnInstall = document.getElementById('btnInstallApp');
-      if (btnInstall) btnInstall.style.display = 'none';
-      const installText = document.getElementById('installText');
-      if (installText) installText.textContent = 'Instale como um App no seu iPhone.';
+    // Só exibe se o navegador permitiu (deferredPrompt) ou se for um iPhone/iPad
+    if (deferredPrompt || isIOS) {
+      banner.style.display = 'flex';
+      
+      // Ajuste de texto para usuários iOS (Apple não permite prompt automático)
+      if (isIOS) {
+        const title = banner.querySelector('.install-text strong');
+        const desc = banner.querySelector('.install-text span');
+        if (title) title.textContent = 'Instale no seu iPhone';
+        if (desc) desc.textContent = 'Toque em Compartilhar -> Adicionar à Tela de Início';
+        
+        const btnInstall = document.getElementById('btnInstallApp');
+        if (btnInstall) btnInstall.textContent = 'Como Instalar';
+      }
     }
-  }, 5000);
+  }, 1500);
 }
 
 /* ==========================================
@@ -1846,12 +1848,6 @@ document.addEventListener('DOMContentLoaded', () => {
   updateVehicleUI();
   renderDashboard();
 
-  // Onboarding Check
-  setTimeout(() => {
-    if (currentUser && !state.onboardingComplete) {
-      startTour();
-    }
-  }, 1000);
 
   // Note: Automatic vehicle modal prompt moved to post-login sync logic
 
@@ -1986,101 +1982,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 1000);
 });
 
-/* ==========================================
-   ONBOARDING TOUR LOGIC
-   ========================================== */
-let tourStep = 0;
-const tourSteps = [
-  {
-    title: "Bem-vindo ao KM Track! ⛽",
-    text: "Vamos te mostrar como controlar seu veículo de forma simples. Clique em Próximo.",
-    target: null
-  },
-  {
-    title: "Dashboard Inteligente",
-    text: "Aqui você verá o resumo de gastos e alertas de manutenção do seu veículo ativo.",
-    target: "statKmTotal"
-  },
-  {
-    title: "Adicionar Registros",
-    text: "Use este botão '+' para registrar novos abastecimentos ou quilometragem a qualquer momento.",
-    target: "fabNewFuel"
-  },
-  {
-    title: "Seus Veículos",
-    text: "Nesta aba você pode cadastrar e alternar entre diferentes carros ou motos.",
-    target: "nav-vehicles"
-  },
-  {
-    title: "Sincronização Cloud",
-    text: "Seus dados estão protegidos em nuvem. Você pode acessar de qualquer lugar!",
-    target: "nav-settings"
+  // Final UI Auto-open adjustments
+  if (state.vehicles.length === 0 && currentUser) {
+    setTimeout(() => openVehicleModal(), 1000);
   }
-];
-
-function startTour() {
-  tourStep = 0;
-  const overlay = document.getElementById('tour-overlay');
-  if (overlay) overlay.style.display = 'flex';
-  renderTourStep();
-}
-
-function renderTourStep() {
-  const step = tourSteps[tourStep];
-  document.getElementById('tour-title').textContent = step.title;
-  document.getElementById('tour-text').textContent = step.text;
-  
-  const mask = document.querySelector('.tour-mask');
-  const tooltip = document.getElementById('tour-tooltip');
-  
-  if (step.target) {
-    const el = document.getElementById(step.target);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      mask.classList.add('highlight');
-      mask.style.clipPath = `circle(70px at ${rect.left + rect.width/2}px ${rect.top + rect.height/2}px)`;
-      
-      // Position tooltip
-      if (rect.top > window.innerHeight / 2) {
-        tooltip.style.top = 'auto';
-        tooltip.style.bottom = (window.innerHeight - rect.top + 20) + 'px';
-      } else {
-        tooltip.style.bottom = 'auto';
-        tooltip.style.top = (rect.bottom + 20) + 'px';
-      }
-    }
-  } else {
-    mask.classList.remove('highlight');
-    mask.style.clipPath = 'none';
-    tooltip.style.top = 'auto';
-    tooltip.style.bottom = 'auto';
-  }
-}
-
-const btnNextTour = document.getElementById('btnNextTour');
-if (btnNextTour) btnNextTour.addEventListener('click', () => {
-  tourStep++;
-  if (tourStep < tourSteps.length) {
-    renderTourStep();
-  } else {
-    endTour();
-  }
-});
-
-const btnSkipTour = document.getElementById('btnSkipTour');
-if (btnSkipTour) btnSkipTour.addEventListener('click', endTour);
-
-function endTour() {
-  const overlay = document.getElementById('tour-overlay');
-  if (overlay) overlay.style.display = 'none';
-  state.onboardingComplete = true;
-  saveState();
-  
-  // Auto-open vehicle modal if no vehicles exist
-  if (!state.vehicles.length) {
-    openVehicleModal();
-  }
-}
 
 Object.assign(window, {
   state,
@@ -2090,8 +1995,7 @@ Object.assign(window, {
   editFuelLog,
   deleteFuelLog,
   editKmLog,
-  deleteKmLog,
-  startTour // Exported for manual re-run if needed
+  deleteKmLog
 });
   // --- Profile Pic Viewer Logic
   const avatar = document.getElementById('headerProfilePic');

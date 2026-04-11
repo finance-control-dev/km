@@ -122,20 +122,6 @@
     </div>
   </div>
 
-  <!-- Onboarding Tour Overlay -->
-  <div id="tour-overlay" class="tour-overlay" style="display:none;">
-    <div class="tour-mask"></div>
-    <div id="tour-tooltip" class="tour-tooltip">
-      <div class="tour-content">
-        <h3 id="tour-title">Título</h3>
-        <p id="tour-text">Texto aqui...</p>
-      </div>
-      <div class="tour-footer">
-        <button class="btn btn-ghost btn-sm" id="btnSkipTour">Pular</button>
-        <button class="btn btn-primary btn-sm" id="btnNextTour">Próximo</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Image Viewer Modal -->
   <div id="imageViewerModal" class="modal-backdrop viewer-backdrop">
@@ -803,9 +789,24 @@
     </div>
   </div>
 
+  <!-- PWA Install Banner (iOS/Android) -->
+  <div id="installBanner" class="install-banner">
+    <div class="install-content">
+      <div class="install-icon">📲</div>
+      <div class="install-text">
+        <strong>KM Track no seu celular</strong>
+        <span>Instale o app para acesso rápido e offline.</span>
+      </div>
+    </div>
+    <div class="install-actions">
+      <button class="btn btn-ghost btn-sm" id="btnDismissInstall">Agora não</button>
+      <button class="btn btn-primary btn-sm" id="btnInstallApp">Instalar</button>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>

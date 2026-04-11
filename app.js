@@ -274,6 +274,11 @@ async function loadFromCloud() {
         saveState(); // Update local storage (without triggering sync again)
         renderAll();
         toast('Dados sincronizados da nuvem.', 'success');
+        
+        // Prompt for first vehicle ONLY if really empty after cloud sync
+        if (state.vehicles.length === 0) {
+          setTimeout(() => openVehicleModal(), 800);
+        }
       } else {
         // Local is newer, push to cloud
         syncToCloud();
@@ -1848,10 +1853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }, 1000);
 
-  // If no vehicle, open vehicle modal after a brief delay
-  if (!state.vehicles.length) {
-    setTimeout(() => openVehicleModal(), 600);
-  }
+  // Note: Automatic vehicle modal prompt moved to post-login sync logic
 
 
   // --- Intelligence Phase Listeners

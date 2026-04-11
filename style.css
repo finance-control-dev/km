@@ -169,7 +169,7 @@ input, textarea, select { font-family: inherit; }
 .header-action-btn {
   background: none;
   border: none;
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -275,7 +275,7 @@ input, textarea, select { font-family: inherit; }
 
 /* --- Page header (Large Titles) --- */
 .page-header { margin-bottom: 1.5rem; }
-.page-title { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.5px; }
+.page-title { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.5px; }
 .page-subtitle { font-size: 0.9rem; color: var(--text-muted); margin-top: 4px; display: block; }
 
 /* --- Cards (iOS grouped style) --- */
@@ -302,8 +302,8 @@ input, textarea, select { font-family: inherit; }
 .stat-card.warning { background: linear-gradient(135deg, rgba(255,159,10,0.15), var(--surface)); }
 .stat-card.info { background: linear-gradient(135deg, rgba(100,210,255,0.15), var(--surface)); }
 
-.stat-icon { font-size: 1.8rem; }
-.stat-value { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px;}
+.stat-icon { font-size: 1.4rem; }
+.stat-value { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px;}
 .stat-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500;}
 
 /* --- Vehicle quick select --- */
@@ -848,10 +848,10 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
 }
 
 .lg-input {
-  font-size: 1.8rem !important;
+  font-size: 1.45rem !important;
   font-weight: 800;
   text-align: center;
-  height: 72px !important;
+  height: 64px !important;
   border-radius: 20px !important;
   background: rgba(255, 255, 255, 0.03) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -929,7 +929,7 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
 }
 
 .flex-result-card h3 {
-  font-size: 1.8rem;
+  font-size: 1.45rem;
   margin-bottom: 10px;
   font-weight: 900;
   letter-spacing: -0.8px;

@@ -26,41 +26,140 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
   <link rel="stylesheet" href="style.css?v=2" />
+
+  <!-- Firebase Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js"
+      }
+    }
+  </script>
 </head>
 <body>
-  <!-- PWA Install Banner -->
   <div class="install-banner" id="installBanner">
     <div class="install-banner-content">
       <img src="icon-192.png" class="install-banner-icon" alt="KM Track" />
       <div class="install-banner-text">
         <strong>Instalar KM Track</strong>
-        <span>Adicione à tela inicial para acesso rápido e uso offline</span>
+        <span id="installText">Acesso rápido, offline e experiência de app nativo.</span>
       </div>
     </div>
+    <div id="iosInstallTools" class="ios-instruction" style="display:none;">
+      Toque em <b>Compartilhar</b> <span style="font-size:1.2rem;vertical-align:middle;">📤</span> e selecione <b>Adicionar à Tela de Início</b>.
+    </div>
     <div class="install-banner-actions">
-      <button class="btn btn-primary btn-sm" id="btnInstallApp">⬇️ Instalar</button>
-      <button class="btn btn-ghost btn-sm" id="btnDismissInstall">✕</button>
+      <button class="btn btn-primary btn-sm" id="btnInstallApp">⬇️ Instalar Agora</button>
+      <button class="btn btn-ghost btn-sm" id="btnDismissInstall">✕ Fechar</button>
+    </div>
+  </div>
+
+  <!-- Login / Welcome Screen -->
+  <div id="login-screen" style="display:none;">
+    <div class="login-container">
+      <div class="login-content">
+        <div class="login-hero">
+          <span class="hero-emoji">⛽</span>
+          <h1 class="hero-title">KM Track</h1>
+          <p class="hero-tagline">Controle de combustível e quilometragem com sincronização em nuvem.</p>
+        </div>
+        
+          <button class="btn btn-google" id="btnGoogleLoginMain">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+            <span>Entrar com Google</span>
+          </button>
+        </div>
+        
+        <p class="login-footer">
+          Ao entrar, seus dados serão sincronizados com sua conta Google de forma segura.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flex Calculator Modal -->
+  <div id="flexModalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">💰 Comparador de Economia</h2>
+        <button class="modal-close" id="closeFlexModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="flex-inputs-container">
+          <div class="form-group">
+            <label class="form-label">💰 Álcool (R$)</label>
+            <input type="number" id="flexPriceAlc" class="form-input lg-input" step="0.01" placeholder="0,00">
+          </div>
+          <div class="form-group">
+            <label class="form-label">💰 Gasolina (R$)</label>
+            <input type="number" id="flexPriceGas" class="form-input lg-input" step="0.01" placeholder="0,00">
+          </div>
+        </div>
+
+        <div id="flexVisualArea" class="flex-visual-area" style="display:none;">
+          <div class="flex-gauge-container">
+            <div class="flex-gauge-bar">
+              <div id="flexGaugeFill" class="flex-gauge-fill"></div>
+              <div class="flex-gauge-marker" style="left: 70%;"><span>70%</span></div>
+            </div>
+          </div>
+          <div class="flex-result-card">
+            <h3 id="flexVerdict">--</h3>
+            <p id="flexReasoning">Insira os preços para comparar</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost btn-block" id="closeFlexModal2">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Onboarding Tour Overlay -->
+  <div id="tour-overlay" class="tour-overlay" style="display:none;">
+    <div class="tour-mask"></div>
+    <div id="tour-tooltip" class="tour-tooltip">
+      <div class="tour-content">
+        <h3 id="tour-title">Título</h3>
+        <p id="tour-text">Texto aqui...</p>
+      </div>
+      <div class="tour-footer">
+        <button class="btn btn-ghost btn-sm" id="btnSkipTour">Pular</button>
+        <button class="btn btn-primary btn-sm" id="btnNextTour">Próximo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Viewer Modal -->
+  <div id="imageViewerModal" class="modal-backdrop viewer-backdrop">
+    <div class="viewer-content">
+      <img id="fullSizeProfilePic" src="" alt="Full Profile" />
+      <button class="modal-close" id="closeImageViewer">✕</button>
     </div>
   </div>
 
   <!-- App Shell -->
-  <div id="app">
+  <div id="app" style="display:none;">
 
     <!-- iOS Top Navbar (Blur/Glassmorphism) -->
-    <header class="ios-header" id="iosHeader">
-      <div class="ios-header-brand">
-        <span class="ios-logo">⛽</span>
+    <header class="ios-header">
+      <div class="ios-header-left">
+        <img id="headerProfilePic" class="header-avatar" src="" alt="Profile" style="display:none;" />
         <span class="ios-brand-text">KM Track</span>
       </div>
       <div class="ios-header-actions">
-        <button class="ios-vehicle-btn" id="iosVehicleBtn">
-          <span id="iosVehicleIcon">🚗</span>
-        </button>
+        <button class="header-action-btn" id="headerFlexBtn" title="Economia">💰</button>
+        <button class="header-action-btn" id="iosVehicleIcon" title="Veículos">🚗</button>
+        <button class="header-action-btn" id="nav-settings-header" title="Ajustes">⚙️</button>
       </div>
     </header>
-
-    <!-- Main Content -->
     <main class="main-content" id="mainContent">
 
       <!-- ===== DASHBOARD ===== -->
@@ -137,22 +236,29 @@
           </div>
           <div class="card-body">
             <div class="monthly-summary" id="monthlySummary">
-              <div class="month-stat">
-                <span class="ms-icon">💸</span>
-                <div class="ms-info">
-                  <span class="ms-value" id="msGasto">R$ 0,00</span>
-                  <span class="ms-label">Gasto em combustível</span>
+              <div class="summary-card">
+                <div class="summary-icon">💰</div>
+                <div class="summary-info">
+                  <span class="summary-label">Total Gasto</span>
+                  <span class="summary-value" id="msGasto">R$ 0,00</span>
+                </div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-icon">⛽</div>
+                <div class="summary-info">
+                  <span class="summary-label">Litros</span>
+                  <span class="summary-value" id="msLitros">0 L</span>
+                </div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-icon">📍</div>
+                <div class="summary-info">
+                  <span class="summary-label">KM Rodados</span>
+                  <span class="summary-value" id="msKm">0 km</span>
                 </div>
               </div>
               <div class="month-stat">
-                <span class="ms-icon">🛢️</span>
-                <div class="ms-info">
-                  <span class="ms-value" id="msLitros">0 L</span>
-                  <span class="ms-label">Litros abastecidos</span>
-                </div>
-              </div>
-              <div class="month-stat">
-                <span class="ms-icon">⛽</span>
+                <span class="ms-icon">📅</span>
                 <div class="ms-info">
                   <span class="ms-value" id="msAbast">0</span>
                   <span class="ms-label">Abastecimentos</span>
@@ -231,13 +337,19 @@
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label" for="fuelTotalCost">Valor total pago</label>
-                <div class="input-group">
-                  <span class="input-prefix">R$</span>
-                  <input type="number" id="fuelTotalCost" class="form-input" placeholder="Calculado automaticamente" min="0" step="0.01" />
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="fuelTotalCost">Valor total pago</label>
+                  <div class="input-group">
+                    <span class="input-prefix">R$</span>
+                    <input type="number" id="fuelTotalCost" class="form-input" placeholder="Calculado automaticamente" min="0" step="0.01" />
+                  </div>
+                  <span class="form-hint">Preenchido automaticamente ou informe o valor total</span>
                 </div>
-                <span class="form-hint">Preenchido automaticamente ou informe o valor total</span>
+                <div class="form-group">
+                  <label class="form-label">Calculadora Flex</label>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btnFlexCalc" style="height: 44px; border: 1px dashed var(--border);">⚖️ Álcool vs Gás</button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -382,6 +494,50 @@
         </div>
       </section>
 
+      <!-- ===== STATISTICS ===== -->
+      <section id="page-stats" class="page">
+        <header class="page-header">
+          <h1 class="page-title">Estatísticas</h1>
+          <p class="page-subtitle">Inteligência de dados</p>
+        </header>
+
+        <div class="stats-grid">
+          <div class="stat-main-card">
+            <h3 class="card-title">Consumo Médio (km/L)</h3>
+            <div class="chart-container">
+              <canvas id="chartConsumption"></canvas>
+            </div>
+          </div>
+
+          <div class="stat-main-card">
+            <h3 class="card-title">Gastos Mensais</h3>
+            <div class="chart-container">
+              <canvas id="chartExpenses"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group" style="margin-top: 2rem;">
+          <p class="settings-group-title">Relatórios & Exportação</p>
+          <div class="settings-list">
+            <div class="settings-item clickable" id="btnExportExcel">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">📗</div>
+                <span class="settings-item-label">Exportar Excel (.xlsx)</span>
+              </div>
+              <div class="settings-item-right">Baixar</div>
+            </div>
+            <div class="settings-item clickable" onclick="window.print()">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">🖨️</div>
+                <span class="settings-item-label">Gerar Relatório PDF</span>
+              </div>
+              <div class="settings-item-right">Imprimir</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== VEHICLES ===== -->
       <section class="page" id="page-vehicles">
         <div class="page-header">
@@ -394,37 +550,99 @@
         </div>
       </section>
 
-      <!-- ===== SETTINGS / BACKUP ===== -->
       <section class="page" id="page-settings">
         <div class="page-header">
           <h1 class="page-title">Ajustes</h1>
         </div>
 
-        <div class="card ios-list-group">
-          <div class="card-header"><h2 class="card-title">📦 Backup de Dados</h2></div>
-          <div class="card-body settings-section">
-            <p class="settings-desc">Exporte todos os seus dados em formato JSON para guardar localmente ou transferir para outro dispositivo.</p>
-            <div class="settings-actions">
-              <button class="btn btn-primary" id="btnExport">⬇️ Exportar Dados (JSON)</button>
-              <label class="btn btn-secondary" for="importFile">⬆️ Importar Dados (JSON)</label>
-              <input type="file" id="importFile" accept=".json" style="display:none;" />
+        <!-- Profile Header (Dynamic) -->
+        <div id="profileHeaderContainer"></div>
+
+        <!-- Group: Account & Sync -->
+        <div class="settings-group">
+          <p class="settings-group-title">Conta e Sincronização</p>
+          <div class="settings-list">
+            <!-- Logged In View -->
+            <div id="settings-logged-in">
+              <div class="settings-item">
+                <div class="settings-item-left">
+                  <div class="settings-item-icon">🔄</div>
+                  <span class="settings-item-label">Sincronização</span>
+                </div>
+                <div class="settings-item-right">
+                  <span id="syncStatusBadge" class="badge">Sincronizado</span>
+                </div>
+              </div>
+              <div class="settings-item clickable" id="btnSettingsLogout">
+                <div class="settings-item-left">
+                  <div class="settings-item-icon">🚪</div>
+                  <span class="settings-item-label settings-item-danger">Sair da Conta</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="card ios-list-group" style="margin-top:1.5rem;">
-          <div class="card-header"><h2 class="card-title">📊 Estatísticas Gerais</h2></div>
-          <div class="card-body">
-            <div class="settings-stats" id="settingsStats"></div>
+        <!-- Group: Data Management -->
+        <div class="settings-group">
+          <p class="settings-group-title">Dados e Backup</p>
+          <div class="settings-list">
+            <div class="settings-item clickable" id="btnSettingsExport">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">⬇️</div>
+                <span class="settings-item-label">Exportar Backup (JSON)</span>
+              </div>
+            </div>
+            <label class="settings-item clickable" for="importFile">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">⬆️</div>
+                <span class="settings-item-label">Importar Backup (JSON)</span>
+              </div>
+              <input type="file" id="importFile" accept=".json" style="display:none;" />
+            </label>
           </div>
         </div>
 
-        <div class="card ios-list-group danger-zone" style="margin-top:1.5rem;">
-          <div class="card-header"><h2 class="card-title">🗑️ Zona de Perigo</h2></div>
-          <div class="card-body settings-section">
-            <p class="settings-desc danger-text">Apagar todos os registros de abastecimento e KM. Esta ação é irreversível!</p>
-            <div class="settings-actions">
-              <button class="btn btn-danger" id="btnClearAllData">🗑️ Limpar Todos os Dados</button>
+        <!-- Group: Statistics -->
+        <div class="settings-group">
+          <p class="settings-group-title">Estatísticas Gerais</p>
+          <div id="settingsStatsList" class="settings-list">
+            <!-- Dynamic stats items here -->
+          </div>
+        </div>
+
+        <!-- Group: Support & Contact -->
+        <div class="settings-group">
+          <p class="settings-group-title">Suporte e Contato</p>
+          <div class="settings-list">
+            <a href="mailto:pat.rnb@hotmail.com" class="settings-item clickable" style="text-decoration: none; color: inherit;">
+              <div class="settings-item-left">
+                <span class="settings-item-icon">📧</span>
+                <span class="settings-item-label">Contato via E-mail</span>
+              </div>
+              <div class="settings-item-right">pat.rnb@hotmail.com</div>
+            </a>
+            <a href="https://contate.me/patrickfernando" target="_blank" class="settings-item clickable" style="text-decoration: none; color: inherit;">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">
+                  <img src="https://www.vectorlogo.zone/logos/whatsapp/whatsapp-icon.svg" style="width: 24px; height: 24px;" alt="WhatsApp">
+                </div>
+                <span class="settings-item-label">Conversar no WhatsApp</span>
+              </div>
+              <div class="settings-item-right">▶️</div>
+            </a>
+          </div>
+        </div>
+
+        <!-- Group: Danger Zone -->
+        <div class="settings-group" style="margin-top: 2rem;">
+          <p class="settings-group-title">Zona de Perigo</p>
+          <div class="settings-list">
+            <div class="settings-item clickable" id="btnSettingsClear">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">🗑️</div>
+                <span class="settings-item-label settings-item-danger">Apagar Todos os Dados</span>
+              </div>
             </div>
           </div>
         </div>
@@ -434,29 +652,28 @@
 
     <!-- iOS Bottom Tab Bar -->
     <nav class="ios-tab-bar" id="bottomTabBar">
-      <a href="#" class="tab-item active" data-page="dashboard" id="nav-dashboard">
+      <div class="tab-item active" id="nav-dashboard" data-page="dashboard">
         <span class="tab-icon">🏠</span>
         <span class="tab-label">Início</span>
-      </a>
-      <a href="#" class="tab-item" data-page="history" id="nav-history">
-        <span class="tab-icon">📋</span>
+      </div>
+      <div class="tab-item" id="nav-history" data-page="history">
+        <span class="tab-icon">📜</span>
         <span class="tab-label">Histórico</span>
-      </a>
+      </div>
       
       <!-- Centralized FAB -->
       <button class="fab" id="fabNewFuel" title="Novo Abastecimento" aria-label="Novo Abastecimento">
-        <span class="fab-icon">⛽</span>
-        <span class="fab-label">Abastecer</span>
+        ⛽
       </button>
 
-      <a href="#" class="tab-item" data-page="vehicles" id="nav-vehicles">
+      <div class="tab-item" id="nav-vehicles" data-page="vehicles">
         <span class="tab-icon">🚗</span>
         <span class="tab-label">Veículos</span>
-      </a>
-      <a href="#" class="tab-item" data-page="settings" id="nav-settings">
-        <span class="tab-icon">⚙️</span>
-        <span class="tab-label">Ajustes</span>
-      </a>
+      </div>
+      <div class="tab-item" id="nav-stats" data-page="stats">
+        <span class="tab-icon">📈</span>
+        <span class="tab-label">Stats</span>
+      </div>
     </nav>
   </div>
 
@@ -517,11 +734,54 @@
             </div>
             <input type="hidden" id="vehicleIcon" value="🚗" />
           </div>
-          <div class="modal-actions">
+          <div class="form-group">
+            <label class="form-label" for="vehicleNextOil">Próxima Troca de Óleo (KM)</label>
+            <input type="number" id="vehicleNextOil" class="form-input" placeholder="Ex: 50000" />
+            <span class="form-help">Nós avisaremos quando você estiver perto deste KM.</span>
+          </div>
+
+          <div class="settings-group" style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+            <p class="settings-group-title">Documentação & Alertas</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="vehicleIpvaDate">Venc. IPVA</label>
+                <input type="date" id="vehicleIpvaDate" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="vehicleInsuranceDate">Venc. Seguro</label>
+                <input type="date" id="vehicleInsuranceDate" class="form-input" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="vehicleLicenseDate">Venc. Licenciamento</label>
+              <input type="date" id="vehicleLicenseDate" class="form-input" />
+            </div>
+          </div>
+
+          <div class="modal-footer">
             <button type="button" class="btn btn-ghost" id="cancelVehicleModal">Cancelar</button>
             <button type="submit" class="btn btn-primary">💾 Salvar</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trash Modal -->
+  <div class="modal-backdrop" id="trashModalBackdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">🗑️ Lixeira</h2>
+        <button class="modal-close" id="closeTrashModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle" style="margin-bottom: 1rem;">Itens apagados ficam aqui antes de serem removidos de vez.</p>
+        <div id="trashList" class="trash-list">
+          <!-- Items render here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnClearTrash">Esvaziar Lixeira</button>
       </div>
     </div>
   </div>
@@ -546,6 +806,6 @@
   <!-- Toast -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=2"></script>
 </body>
 </html>

@@ -1,8 +1,30 @@
+'use strict';
+
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, writeBatch, deleteDoc } from "firebase/firestore";
+
 /* ==========================================
-   KM TRACK — APPLICATION LOGIC
+   FIREBASE CONFIGURATION
    ========================================== */
 
-'use strict';
+const firebaseConfig = {
+  apiKey: "AIzaSyAXp_ZBYUwW5K9DB8mm1xW4dXMN7ZLslwU",
+  authDomain: "kmtrack-e6c8e.firebaseapp.com",
+  projectId: "kmtrack-e6c8e",
+  storageBucket: "kmtrack-e6c8e.firebasestorage.app",
+  messagingSenderId: "183667299645",
+  appId: "1:183667299645:web:96690634f91899625de154",
+  measurementId: "G-T62DEYPCY7"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+const googleProvider = new GoogleAuthProvider();
+
+let currentUser = null;
+let isSyncing = false;
 
 /* ==========================================
    PWA — SERVICE WORKER REGISTRATION
@@ -39,43 +61,72 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// PWA install prompt
-let deferredInstallPrompt = null;
+/* ==========================================
+   PWA INSTALLATION LOGIC
+   ========================================== */
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  showInstallBanner();
-});
+let deferredPrompt;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
 window.addEventListener('appinstalled', () => {
-  hideInstallBanner();
-  deferredInstallPrompt = null;
+  const banner = document.getElementById('installBanner');
+  if (banner) banner.style.display = 'none';
+  deferredPrompt = null;
   toast('KM Track instalado com sucesso! 🎉', 'success');
 });
 
-function showInstallBanner() {
+function initPWA() {
   const banner = document.getElementById('installBanner');
-  if (banner) {
-    banner.classList.add('visible');
+  const btnInstall = document.getElementById('btnInstallApp');
+  const btnDismiss = document.getElementById('btnDismissInstall');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    checkInstallPrompt();
+  });
+
+  if (isIOS) {
+    checkInstallPrompt();
   }
+
+  if (btnDismiss) btnDismiss.addEventListener('click', () => {
+    banner.style.display = 'none';
+    localStorage.setItem('pwaDismissed', 'true');
+  });
+
+  if (btnInstall) btnInstall.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        banner.style.display = 'none';
+      }
+      deferredPrompt = null;
+    }
+  });
 }
 
-function hideInstallBanner() {
-  const banner = document.getElementById('installBanner');
-  if (banner) {
-    banner.classList.remove('visible');
-  }
-}
+function checkInstallPrompt() {
+  if (isStandalone || localStorage.getItem('pwaDismissed') === 'true') return;
 
-async function triggerInstall() {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  const { outcome } = await deferredInstallPrompt.userChoice;
-  if (outcome === 'accepted') {
-    hideInstallBanner();
-  }
-  deferredInstallPrompt = null;
+  // Wait 5s to show, feels more natural
+  setTimeout(() => {
+    const banner = document.getElementById('installBanner');
+    if (!banner) return;
+    
+    banner.style.display = 'flex';
+    
+    if (isIOS) {
+      const iosTools = document.getElementById('iosInstallTools');
+      if (iosTools) iosTools.style.display = 'block';
+      const btnInstall = document.getElementById('btnInstallApp');
+      if (btnInstall) btnInstall.style.display = 'none';
+      const installText = document.getElementById('installText');
+      if (installText) installText.textContent = 'Instale como um App no seu iPhone.';
+    }
+  }, 5000);
 }
 
 /* ==========================================
@@ -84,12 +135,17 @@ async function triggerInstall() {
 
 const STORAGE_KEY = 'kmtrack_data';
 
-const defaultState = () => ({
-  vehicles: [],
-  activeVehicleId: null,
-  fuelLogs: [],      // { id, vehicleId, date, kmTotal, fuelType, liters, pricePerLiter, totalCost, station, notes }
-  kmLogs: [],        // { id, vehicleId, date, kmStart, kmEnd, kmDiff, purpose, notes }
-});
+function defaultState() {
+  return {
+    vehicles: [],
+    fuelLogs: [],
+    kmLogs: [],
+    theme: 'dark',
+    activeVehicleId: null,
+    trash: [], 
+    onboardingComplete: false
+  };
+}
 
 let state = defaultState();
 
@@ -101,8 +157,261 @@ function loadState() {
 }
 
 function saveState() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  try { 
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); 
+    // Trigger cloud sync in background if logged in
+    syncToCloud();
+  }
   catch (e) { console.warn('Failed to save state', e); }
+}
+
+/* ==========================================
+   FIREBASE SYNC LOGIC
+   ========================================== */
+
+async function syncToCloud() {
+  if (!currentUser || isSyncing) return;
+  
+  updateSyncStatus('loading');
+  isSyncing = true;
+  try {
+    const batch = writeBatch(db);
+    const userId = currentUser.uid;
+
+    // 1. Root User Doc (Settings)
+    const userRef = doc(db, 'users', userId);
+    batch.set(userRef, {
+      activeVehicleId: state.activeVehicleId,
+      updatedAt: Date.now(),
+      // Clean up old format if it existed
+      vehicles: null,
+      fuelLogs: null,
+      kmLogs: null
+    }, { merge: true });
+
+    // 2. Vehicles
+    state.vehicles.forEach(v => {
+      const vRef = doc(db, 'users', userId, 'vehicles', v.id);
+      batch.set(vRef, v);
+    });
+
+    // 3. Fuel Logs (Syncing last 200 for performance/batch limit)
+    state.fuelLogs.slice(0, 200).forEach(l => {
+      const lRef = doc(db, 'users', userId, 'fuelLogs', l.id);
+      batch.set(lRef, l);
+    });
+
+    // 4. KM Logs
+    state.kmLogs.slice(0, 200).forEach(l => {
+      const lRef = doc(db, 'users', userId, 'kmLogs', l.id);
+      batch.set(lRef, l);
+    });
+
+    // 5. Trash Logs
+    state.trash.slice(0, 50).forEach(t => {
+      const tRef = doc(db, 'users', userId, 'trash', t.trashId);
+      batch.set(tRef, t);
+    });
+
+    await batch.commit();
+    updateSyncStatus('success');
+  } catch (e) {
+    console.error('Cloud sync failed', e);
+    updateSyncStatus('error');
+  } finally {
+    isSyncing = false;
+  }
+}
+
+async function loadFromCloud() {
+  if (!currentUser) return;
+  
+  updateSyncStatus('loading');
+  try {
+    const userId = currentUser.uid;
+    const userRef = doc(db, 'users', userId);
+    
+    // Fetch all collections in parallel
+    const [userSnap, vSnap, fSnap, kSnap, tSnap] = await Promise.all([
+      getDoc(userRef),
+      getDocs(collection(db, 'users', userId, 'vehicles')),
+      getDocs(collection(db, 'users', userId, 'fuelLogs')),
+      getDocs(collection(db, 'users', userId, 'kmLogs')),
+      getDocs(collection(db, 'users', userId, 'trash'))
+    ]);
+    
+    // Detect Legacy Data Format (Old single document sync)
+    if (userSnap.exists() && userSnap.data().vehicles && Array.isArray(userSnap.data().vehicles)) {
+      console.log('[Firebase] Detectado formato antigo. Migrando...');
+      await migrateLegacyData(userSnap.data());
+      return loadFromCloud(); // Restart after migration
+    }
+
+    if (userSnap.exists() || !vSnap.empty) {
+      const cloudVehicles = vSnap.docs.map(d => d.data());
+      const cloudFuel = fSnap.docs.map(d => d.data());
+      const cloudKm = kSnap.docs.map(d => d.data());
+      const cloudTrash = (tSnap && !tSnap.empty) ? tSnap.docs.map(d => d.data()) : [];
+      const cloudActiveId = userSnap.exists() ? userSnap.data().activeVehicleId : null;
+      const cloudUpdatedAt = userSnap.exists() ? userSnap.data().updatedAt : 0;
+
+      // Merge Logic: If cloud is newer OR local is effectively empty
+      if (state.vehicles.length === 0 || cloudUpdatedAt > (state.updatedAt || 0)) {
+        state = { 
+          ...defaultState(), 
+          vehicles: cloudVehicles,
+          fuelLogs: cloudFuel,
+          kmLogs: cloudKm,
+          trash: cloudTrash,
+          activeVehicleId: cloudActiveId || cloudVehicles[0]?.id || null,
+          updatedAt: cloudUpdatedAt
+        };
+        
+        // Sort logs by date descending
+        state.fuelLogs.sort((a, b) => b.date.localeCompare(a.date));
+        state.kmLogs.sort((a, b) => b.date.localeCompare(a.date));
+
+        saveState(); // Update local storage (without triggering sync again)
+        renderAll();
+        toast('Dados sincronizados da nuvem.', 'success');
+      } else {
+        // Local is newer, push to cloud
+        syncToCloud();
+      }
+      updateSyncStatus('success');
+    } else {
+      // New user or empty cloud, upload current local state
+      syncToCloud();
+    }
+  } catch (e) {
+    console.error('Failed to load from cloud', e);
+    updateSyncStatus('error');
+  }
+}
+
+async function migrateLegacyData(oldData) {
+  toast('Migrando dados para novo formato...', 'info');
+  const batch = writeBatch(db);
+  const userId = currentUser.uid;
+
+  // Move vehicles
+  if (oldData.vehicles) {
+    oldData.vehicles.forEach(v => {
+      batch.set(doc(db, 'users', userId, 'vehicles', v.id), v);
+    });
+  }
+  // Move Fuel
+  if (oldData.fuelLogs) {
+    oldData.fuelLogs.forEach(l => {
+      batch.set(doc(db, 'users', userId, 'fuelLogs', l.id), l);
+    });
+  }
+  // Move KM
+  if (oldData.kmLogs) {
+    oldData.kmLogs.forEach(l => {
+      batch.set(doc(db, 'users', userId, 'kmLogs', l.id), l);
+    });
+  }
+
+  // Clear legacy fields and update root
+  batch.set(doc(db, 'users', userId), {
+    activeVehicleId: oldData.activeVehicleId || null,
+    updatedAt: oldData.updatedAt || Date.now(),
+    // Clear out old fields
+    vehicles: null,
+    fuelLogs: null,
+    kmLogs: null
+  }, { merge: true });
+
+  await batch.commit();
+}
+
+function updateSyncStatus(status) {
+  const badge = document.getElementById('syncStatusBadge');
+  if (!badge) return;
+
+  badge.className = 'badge ' + (status === 'success' ? 'badge-primary' : '');
+  
+  if (status === 'loading') {
+    badge.textContent = '⏳ Sincronizando...';
+  } else if (status === 'success') {
+    badge.textContent = '✅ Sincronizado';
+  } else if (status === 'error') {
+    badge.textContent = '❌ Erro de Sincronia';
+    badge.classList.add('badge-danger'); // Assuming we add a badge-danger class if needed
+  }
+}
+
+/* ==========================================
+   FIREBASE AUTH LOGIC
+   ========================================== */
+
+async function loginWithGoogle() {
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (e) {
+    console.error('Login failed', e);
+    toast('Falha ao entrar com Google.', 'error');
+  }
+}
+
+async function logout() {
+  try {
+    await signOut(auth);
+    state = defaultState();
+    saveState();
+    window.location.reload(); // Reset app state
+  } catch (e) {
+    console.error('Logout failed', e);
+  }
+}
+
+// Auth State Observer
+onAuthStateChanged(auth, (user) => {
+  const loginScreen = document.getElementById('login-screen');
+  const appShell = document.getElementById('app');
+  const profileContainer = document.getElementById('profileHeaderContainer');
+  const avatar = document.getElementById('headerProfilePic');
+
+  if (user) {
+    currentUser = user;
+    if (loginScreen) loginScreen.style.display = 'none';
+    if (appShell) appShell.style.display = 'block';
+
+    // Update Header Avatar
+    if (avatar && user.photoURL) {
+      avatar.src = user.photoURL;
+      avatar.style.display = 'block';
+    }
+
+    // Update Settings Profile Header
+    if (profileContainer) {
+      profileContainer.innerHTML = `
+        <div class="profile-header">
+          <img src="${user.photoURL || ''}" class="profile-photo-large" alt="Foto" style="${!user.photoURL ? 'display:none;' : ''}"/>
+          <div class="profile-info-large">
+            <span class="profile-name-large">${escHtml(user.displayName)}</span>
+            <span class="profile-email-large">${escHtml(user.email)}</span>
+          </div>
+        </div>
+      `;
+    }
+    loadFromCloud();
+  } else {
+    currentUser = null;
+    if (loginScreen) loginScreen.style.display = 'flex';
+    if (appShell) appShell.style.display = 'none';
+    if (profileContainer) profileContainer.innerHTML = '';
+    if (avatar) avatar.style.display = 'none';
+  }
+});
+
+function renderAll() {
+  renderDashboard();
+  renderVehicles();
+  renderHistory();
+  renderSettings();
+  renderKmToday();
 }
 
 /* ==========================================
@@ -133,19 +442,29 @@ function currentMonthKey() {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function fuelLabel(type) {
-  const map = { gasolina: 'Gasolina', alcool: 'Álcool', diesel: 'Diesel', gnv: 'GNV' };
-  return map[type] || type;
-}
-
 function fuelEmoji(type) {
-  const map = { gasolina: '⛽', alcool: '🌿', diesel: '🛢️', gnv: '💨' };
+  const map = { gasolina: '⛽', alcool: '🌿', diesel: '🚚', gnv: '💨' };
   return map[type] || '⛽';
 }
 
+function fuelLabel(type) {
+  const labels = { gasolina: 'Gasolina', alcool: 'Álcool', diesel: 'Diesel', gnv: 'GNV' };
+  return labels[type] || 'Outro';
+}
+
 function purposeLabel(p) {
-  const map = { pessoal: '🏠 Pessoal', trabalho: '💼 Trabalho', viagem: '✈️ Viagem', outros: '📦 Outros' };
-  return map[p] || p;
+  const labels = {
+    trabalho: 'Trabalho',
+    pessoal: 'Pessoal',
+    viagem: 'Viagem',
+    outro: 'Outro'
+  };
+  return labels[p] || 'Particular';
+}
+
+function purposeIcon(p) {
+  const map = { pessoal: '🏠', trabalho: '💼', viagem: '✈️', outros: '📦' };
+  return map[p] || '📍';
 }
 
 /* ==========================================
@@ -161,6 +480,8 @@ function setActiveVehicle(id) {
   saveState();
   updateVehicleUI();
   renderDashboard();
+  renderVehicles(); // Ensure vehicle list updates badges and buttons
+  toast('Veículo alterado!', 'success');
 }
 
 function getVehicleLogs(vehicleId) {
@@ -191,8 +512,10 @@ function navigateTo(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'history') renderHistory();
   if (page === 'vehicles') renderVehicles();
+  if (page === 'stats') renderStats();
   if (page === 'settings') renderSettings();
-  if (page === 'km') renderKmToday();
+  // Reset scroll
+  window.scrollTo(0, 0);
 }
 
 
@@ -201,12 +524,18 @@ function navigateTo(page) {
    ========================================== */
 
 function toast(msg, type = 'info') {
-  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
-  document.getElementById('toastContainer').appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  const emoj = type === 'success' ? '✅' : (type === 'error' ? '❌' : 'ℹ️');
+  
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<span>${emoj} ${msg}</span>`;
+  container.appendChild(t);
+  
+  setTimeout(() => {
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 500);
+  }, 3000);
 }
 
 /* ==========================================
@@ -230,7 +559,12 @@ function closeConfirm() {
    VEHICLE MODAL
    ========================================== */
 
-function openVehicleModal(vehicle = null) {
+function openVehicleModal(vehicleOrId) {
+  let vehicle = vehicleOrId;
+  if (typeof vehicleOrId === 'string') {
+    vehicle = state.vehicles.find(v => v.id === vehicleOrId);
+  }
+
   const form = document.getElementById('vehicleForm');
   form.reset();
 
@@ -243,6 +577,10 @@ function openVehicleModal(vehicle = null) {
     document.getElementById('vehicleYear').value = vehicle.year || '';
     document.getElementById('vehiclePlate').value = vehicle.plate || '';
     document.getElementById('vehicleKmInitial').value = vehicle.kmInitial || 0;
+    document.getElementById('vehicleNextOil').value = vehicle.nextOilKm || '';
+    document.getElementById('vehicleIpvaDate').value = vehicle.ipvaDate || '';
+    document.getElementById('vehicleInsuranceDate').value = vehicle.insuranceDate || '';
+    document.getElementById('vehicleLicenseDate').value = vehicle.licenseDate || '';
     document.getElementById('vehicleIcon').value = vehicle.icon || '🚗';
     // Update icon picker
     document.querySelectorAll('.icon-btn').forEach(b => {
@@ -252,6 +590,7 @@ function openVehicleModal(vehicle = null) {
     document.getElementById('vehicleModalTitle').textContent = 'Adicionar Veículo';
     document.getElementById('vehicleId').value = '';
     document.getElementById('vehicleIcon').value = '🚗';
+    document.getElementById('vehicleNextOil').value = '';
     document.querySelectorAll('.icon-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
   }
 
@@ -277,6 +616,10 @@ function saveVehicle(e) {
     year: document.getElementById('vehicleYear').value,
     plate: document.getElementById('vehiclePlate').value.trim().toUpperCase(),
     kmInitial: parseFloat(document.getElementById('vehicleKmInitial').value) || 0,
+    nextOilKm: parseFloat(document.getElementById('vehicleNextOil').value) || null,
+    ipvaDate: document.getElementById('vehicleIpvaDate').value,
+    insuranceDate: document.getElementById('vehicleInsuranceDate').value,
+    licenseDate: document.getElementById('vehicleLicenseDate').value,
     icon: document.getElementById('vehicleIcon').value,
     createdAt: id ? (state.vehicles.find(v => v.id === id)?.createdAt || Date.now()) : Date.now(),
   };
@@ -300,16 +643,50 @@ function saveVehicle(e) {
 }
 
 function deleteVehicle(id) {
-  openConfirm('Remover veículo', 'Deseja remover este veículo? Os registros vinculados serão mantidos.', () => {
+  const v = state.vehicles.find(v => v.id === id);
+  if (!v) return;
+
+  openConfirm('Mover para Lixeira', `Deseja mover "${v.name}" para a lixeira? Seus registros também serão ocultados.`, async () => {
+    // Collect related logs to trash together
+    const relatedFuel = state.fuelLogs.filter(l => l.vehicleId === id);
+    const relatedKm = state.kmLogs.filter(l => l.vehicleId === id);
+
+    const trashItem = {
+      trashId: 'tr_' + Date.now() + Math.random().toString(36).substr(2, 5),
+      type: 'vehicle',
+      data: v,
+      relatedData: { fuel: relatedFuel, km: relatedKm },
+      deletedAt: new Date().toISOString()
+    };
+
+    state.trash.push(trashItem);
     state.vehicles = state.vehicles.filter(v => v.id !== id);
+    state.fuelLogs = state.fuelLogs.filter(l => l.vehicleId !== id);
+    state.kmLogs = state.kmLogs.filter(l => l.vehicleId !== id);
+
     if (state.activeVehicleId === id) {
-      state.activeVehicleId = state.vehicles[0]?.id || null;
+      state.activeVehicleId = state.vehicles.length > 0 ? state.vehicles[0].id : null;
     }
+
     saveState();
+    if (currentUser) {
+      try {
+        const batch = writeBatch(db);
+        const userId = currentUser.uid;
+        batch.delete(doc(db, "users", userId, "vehicles", id));
+        // Note: we don't delete logs from DB here for speed, they just won't show 
+        // until restored or unless we batch delete them. 
+        // Safest is to batch delete them too.
+        relatedFuel.forEach(l => batch.delete(doc(db, "users", userId, "fuelLogs", l.id)));
+        relatedKm.forEach(l => batch.delete(doc(db, "users", userId, "kmLogs", l.id)));
+        await batch.commit();
+      } catch (e) { console.error('Cloud trash sync error', e); }
+    }
+    
     renderVehicles();
-    updateVehicleUI();
     renderDashboard();
-    toast('Veículo removido.', 'success');
+    syncToCloud(); 
+    toast('Veículo movido para a lixeira 🗑️', 'info');
   });
 }
 
@@ -342,11 +719,12 @@ function renderVehicles() {
       </div>
       <div class="vehicle-card-actions">
         ${!isActive ? `<button class="btn btn-sm btn-primary" onclick="setActiveVehicle('${v.id}')">Usar</button>` : ''}
-        <button class="btn btn-sm btn-secondary" onclick="openVehicleModal(state.vehicles.find(v=>v.id==='${v.id}'))">✏️</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteVehicle('${v.id}')">🗑️</button>
+        <button class="btn btn-sm btn-secondary" onclick="openVehicleModal('${v.id}')" title="Editar">✏️</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteVehicle('${v.id}')" title="Remover">🗑️</button>
       </div>
     </div>`;
   }).join('');
+
 }
 
 /* ==========================================
@@ -410,8 +788,15 @@ function saveFuel(e) {
     totalCost: total,
     station: document.getElementById('fuelStation').value.trim(),
     notes: document.getElementById('fuelNotes').value.trim(),
-    createdAt: editingId ? (state.fuelLogs.find(l => l.id === editingId)?.createdAt || Date.now()) : Date.now(),
+    location: null
   };
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      log.location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    });
+  }
+  log.createdAt = editingId ? (state.fuelLogs.find(l => l.id === editingId)?.createdAt || Date.now()) : Date.now();
 
   if (editingId) {
     const idx = state.fuelLogs.findIndex(l => l.id === editingId);
@@ -435,14 +820,29 @@ function saveFuel(e) {
   renderHistory();
 }
 
-function deleteFuelLog(id) {
-  openConfirm('Remover registro', 'Deseja remover este abastecimento?', () => {
-    state.fuelLogs = state.fuelLogs.filter(l => l.id !== id);
-    saveState();
-    renderHistory();
-    renderDashboard();
-    toast('Registro removido.', 'success');
-  });
+async function deleteFuelLog(id) {
+  const log = state.fuelLogs.find(l => l.id === id);
+  if (!log) return;
+
+  const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
+  const trashItem = {
+    trashId,
+    type: 'fuel',
+    data: log,
+    deletedAt: new Date().toISOString()
+  };
+
+  state.trash.push(trashItem);
+  state.fuelLogs = state.fuelLogs.filter(l => l.id !== id);
+  
+  saveState();
+  if (currentUser) {
+    try { await deleteDoc(doc(db, "users", currentUser.uid, "fuelLogs", id)); } catch(e){}
+  }
+  renderHistory();
+  renderDashboard();
+  syncToCloud();
+  toast('Abastecimento movido para a lixeira 🗑️', 'info');
 }
 
 /* ==========================================
@@ -499,15 +899,30 @@ function saveKm(e) {
   renderHistory();
 }
 
-function deleteKmLog(id) {
-  openConfirm('Remover registro', 'Deseja remover este registro de KM?', () => {
-    state.kmLogs = state.kmLogs.filter(l => l.id !== id);
-    saveState();
-    renderHistory();
-    renderKmToday();
-    renderDashboard();
-    toast('Registro removido.', 'success');
-  });
+async function deleteKmLog(id) {
+  const log = state.kmLogs.find(l => l.id === id);
+  if (!log) return;
+
+  const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
+  const trashItem = {
+    trashId,
+    type: 'km',
+    data: log,
+    deletedAt: new Date().toISOString()
+  };
+
+  state.trash.push(trashItem);
+  state.kmLogs = state.kmLogs.filter(l => l.id !== id);
+  
+  saveState();
+  if (currentUser) {
+    try { await deleteDoc(doc(db, "users", currentUser.uid, "kmLogs", id)); } catch(e){}
+  }
+  renderHistory();
+  renderDashboard();
+  renderKmToday();
+  syncToCloud();
+  toast('Registro de KM movido para a lixeira 🗑️', 'info');
 }
 
 /* ==========================================
@@ -569,7 +984,7 @@ function renderDashboard() {
     const totalToday = kmToday.reduce((s, l) => s + (l.kmDiff || 0), 0);
     kmTodayCard.innerHTML = `<div class="last-fill-info">
       <div class="lf-row"><span class="lf-label">KM rodados hoje</span><span class="lf-value" style="color:var(--success);font-size:1.1rem;">${fmtNum(totalToday)} km</span></div>
-      ${kmToday.map(l => `<div class="lf-row"><span class="lf-label">${purposeLabel(l.purpose)}</span><span class="lf-value">${fmtNum(l.kmDiff)} km</span></div>`).join('')}
+      ${kmToday.map(l => `<div class="lf-row"><span class="lf-label">${purposeIcon(l.purpose)} ${purposeLabel(l.purpose)}</span><span class="lf-value">${fmtNum(l.kmDiff)} km</span></div>`).join('')}
     </div>`;
   } else {
     kmTodayCard.innerHTML = '<div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>';
@@ -582,6 +997,64 @@ function renderDashboard() {
   document.getElementById('msLitros').textContent = fmtNum(monthFuel.reduce((s, l) => s + (l.liters || 0), 0), 1) + ' L';
   document.getElementById('msAbast').textContent = monthFuel.length;
   document.getElementById('msKm').textContent = fmtNum(monthKm.reduce((s, l) => s + (l.kmDiff || 0), 0)) + ' km';
+
+  // Maintenance Alerts
+  const dashSummary = document.querySelector('#page-dashboard .page-header');
+  if (v && v.nextOilKm) {
+    const currentKm = v.currentKm || 0;
+    const remaining = v.nextOilKm - currentKm;
+    if (remaining < 1000) {
+      const isDanger = remaining <= 0;
+      // Remove old alert if exists
+      const oldAlert = document.getElementById('dash-maint-alert');
+      if (oldAlert) oldAlert.remove();
+
+      const alertDiv = document.createElement('div');
+      alertDiv.id = 'dash-maint-alert';
+      alertDiv.className = `maintenance-card ${isDanger ? 'danger' : ''}`;
+      alertDiv.innerHTML = `
+        <div class="maintenance-icon">${isDanger ? '🚨' : '⚠️'}</div>
+        <div class="maintenance-text">
+          <h4>${isDanger ? 'Troca de Óleo Vencida!' : 'Troca de Óleo Próxima'}</h4>
+          <p>${isDanger ? 'Venceu há' : 'Faltam'} ${Math.abs(remaining)} km para o limite.</p>
+        </div>
+      `;
+      dashSummary.after(alertDiv);
+    } else {
+      const oldAlert = document.getElementById('dash-maint-alert');
+      if (oldAlert) oldAlert.remove();
+    }
+  }
+
+  // Document Alerts (IPVA, Licensing, Insurance)
+  if (v) {
+    const today = new Date();
+    const checkDoc = (dateStr, label) => {
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      const diffDays = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+      if (diffDays <= 30) {
+        const isExpired = diffDays <= 0;
+        const alertId = `dash-doc-${label}`;
+        if (document.getElementById(alertId)) return;
+        const docAlert = document.createElement('div');
+        docAlert.id = alertId;
+        docAlert.className = `maintenance-card ${isExpired ? 'danger' : ''}`;
+        docAlert.style.marginTop = '0.5rem';
+        docAlert.innerHTML = `
+          <div class="maintenance-icon">📄</div>
+          <div class="maintenance-text">
+            <h4>${label} ${isExpired ? 'Vencido' : 'Próximo'}</h4>
+            <p>${isExpired ? 'Venceu em' : 'Vence em'} ${formatDate(dateStr)} (${diffDays} dias).</p>
+          </div>
+        `;
+        dashSummary.after(docAlert);
+      }
+    };
+    checkDoc(v.ipvaDate, 'IPVA');
+    checkDoc(v.licenseDate, 'Licenciamento');
+    checkDoc(v.insuranceDate, 'Seguro');
+  }
 
   // Update vehicle selector
   updateVehicleUI();
@@ -606,7 +1079,7 @@ function renderKmToday() {
     <div class="hist-item km-entry">
       <div class="hist-item-header">
         <div style="display:flex;align-items:center;gap:0.5rem;">
-          <span>${purposeLabel(l.purpose)}</span>
+          <span>${purposeIcon(l.purpose)} ${purposeLabel(l.purpose)}</span>
         </div>
         <span class="hist-item-cost" style="color:var(--primary-light);">+${fmtNum(l.kmDiff)} km</span>
       </div>
@@ -654,38 +1127,36 @@ function renderHistory() {
 }
 
 function renderFuelHistory(vId) {
-  let logs = state.fuelLogs.filter(l => l.vehicleId === vId);
-  if (histFilterMonth) logs = logs.filter(l => l.date?.startsWith(histFilterMonth));
-  if (histFilterFuelType) logs = logs.filter(l => l.fuelType === histFilterFuelType);
+  let fuelLogs = state.fuelLogs.filter(l => l.vehicleId === vId);
+  if (histFilterMonth) fuelLogs = fuelLogs.filter(l => l.date?.startsWith(histFilterMonth));
+  if (histFilterFuelType) fuelLogs = fuelLogs.filter(l => l.fuelType === histFilterFuelType);
 
   const container = document.getElementById('fuelHistoryList');
-  if (!logs.length) {
+  if (!fuelLogs.length) {
     container.innerHTML = '<div class="empty-state"><span>⛽</span><p>Nenhum registro encontrado.</p></div>';
     return;
   }
 
-  container.innerHTML = logs.map(l => `
-    <div class="hist-item ${l.fuelType}">
-      <div class="hist-item-header">
-        <div style="display:flex;align-items:center;gap:0.5rem;">
-          <span class="fuel-badge ${l.fuelType}">${fuelEmoji(l.fuelType)} ${fuelLabel(l.fuelType)}</span>
-          <span class="hist-item-date">${formatDate(l.date)}</span>
+    container.innerHTML = fuelLogs.map(l => `
+      <div class="hist-item fuel-entry">
+        <div class="hist-item-header">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span class="fuel-badge ${l.fuelType}">${fuelEmoji(l.fuelType)} ${fuelLabel(l.fuelType)}</span>
+            <span class="hist-item-date">${formatDate(l.date)}</span>
+          </div>
+          <span class="hist-item-cost">${fmt(l.totalCost)}</span>
         </div>
-        <span class="hist-item-cost">${fmt(l.totalCost)}</span>
+        <div class="hist-item-details">
+          <span class="hist-detail">📍 <span>${fmtNum(l.kmTotal)} km</span></span>
+          <span class="hist-detail">⛽ <span>${fmtNum(l.liters, 2)} L (${fmt(l.pricePerLiter)}/L)</span></span>
+          ${l.station ? `<span class="hist-detail">⛽ <span>${escHtml(l.station)}</span></span>` : ''}
+        </div>
+        <div class="hist-item-actions">
+          <button class="btn btn-ghost btn-sm" onclick="editFuelLog('${l.id}')">✏️ Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteFuelLog('${l.id}')">🗑️</button>
+        </div>
       </div>
-      <div class="hist-item-details">
-        <span class="hist-detail">🛢️ <span>${fmtNum(l.liters, 2)} L</span></span>
-        <span class="hist-detail">💲 <span>${fmt(l.pricePerLiter)}/L</span></span>
-        <span class="hist-detail">📏 <span>${fmtNum(l.kmTotal)} km</span></span>
-        ${l.station ? `<span class="hist-detail">📍 <span>${escHtml(l.station)}</span></span>` : ''}
-        ${l.notes ? `<span class="hist-detail">📝 <span>${escHtml(l.notes)}</span></span>` : ''}
-      </div>
-      <div class="hist-item-actions">
-        <button class="hist-action-btn edit" onclick="editFuelLog('${l.id}')" title="Editar">✏️</button>
-        <button class="hist-action-btn" onclick="deleteFuelLog('${l.id}')" title="Remover">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
 }
 
 function renderKmHistory(vId) {
@@ -729,16 +1200,50 @@ function renderSettings() {
     vehicles: state.vehicles.length,
     fuelLogs: state.fuelLogs.length,
     kmLogs: state.kmLogs.length,
+    trashCount: (state.trash || []).length,
     totalSpent: state.fuelLogs.reduce((s, l) => s + (l.totalCost || 0), 0),
     totalLiters: state.fuelLogs.reduce((s, l) => s + (l.liters || 0), 0),
   };
 
-  document.getElementById('settingsStats').innerHTML = `
-    <div class="settings-stat"><div class="settings-stat-val">${total.vehicles}</div><div class="settings-stat-lbl">Veículos</div></div>
-    <div class="settings-stat"><div class="settings-stat-val">${total.fuelLogs}</div><div class="settings-stat-lbl">Abastecimentos</div></div>
-    <div class="settings-stat"><div class="settings-stat-val">${total.kmLogs}</div><div class="settings-stat-lbl">Registros de KM</div></div>
-    <div class="settings-stat"><div class="settings-stat-val">${fmt(total.totalSpent)}</div><div class="settings-stat-lbl">Total gasto</div></div>
-    <div class="settings-stat"><div class="settings-stat-val">${fmtNum(total.totalLiters, 1)} L</div><div class="settings-stat-lbl">Litros abastecidos</div></div>
+  const list = document.getElementById('settingsStatsList');
+  if (!list) return;
+
+  list.innerHTML = `
+    <div class="settings-item">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">🚗</div>
+        <span class="settings-item-label">Veículos Ativos</span>
+      </div>
+      <div class="settings-item-right">${total.vehicles}</div>
+    </div>
+    <div class="settings-item">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">⛽</div>
+        <span class="settings-item-label">Abastecimentos</span>
+      </div>
+      <div class="settings-item-right">${total.fuelLogs}</div>
+    </div>
+    <div class="settings-item">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">📍</div>
+        <span class="settings-item-label">Registros de KM</span>
+      </div>
+      <div class="settings-item-right">${total.kmLogs}</div>
+    </div>
+    <div class="settings-item">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">🗑️</div>
+        <span class="settings-item-label">Lixeira</span>
+      </div>
+      <div class="settings-item-right">${total.trashCount} itens</div>
+    </div>
+    <div class="settings-item">
+      <div class="settings-item-left">
+        <div class="settings-item-icon">💰</div>
+        <span class="settings-item-label">Total Gasto</span>
+      </div>
+      <div class="settings-item-right">${fmt(total.totalSpent)}</div>
+    </div>
   `;
 }
 
@@ -757,6 +1262,10 @@ function exportData() {
   URL.revokeObjectURL(url);
   toast('Backup exportado com sucesso!', 'success');
 }
+
+
+
+// Settings / Stats buttons
 
 function importData(e) {
   const file = e.target.files[0];
@@ -804,6 +1313,9 @@ function clearAllData() {
 function editFuelLog(id) {
   const log = state.fuelLogs.find(l => l.id === id);
   if (!log) return;
+
+  // Update stats if on stats page
+  if (currentPage === 'stats') renderStats();
 
   // Navigate to register page
   navigateTo('register');
@@ -966,6 +1478,161 @@ function escHtml(str) {
 }
 
 /* ==========================================
+   STATISTICS & CHARTS
+   ========================================== */
+let consumptionChart = null;
+let expensesChart = null;
+
+function renderStats() {
+  const vId = state.activeVehicleId;
+  const v = getActiveVehicle();
+  if (!v || !vId) return;
+
+  const vFuel = state.fuelLogs.filter(l => l.vehicleId === vId).sort((a,b) => a.date.localeCompare(b.date));
+  
+  // Consumption Chart Data
+  const consumptionData = [];
+  const consumptionLabels = [];
+  
+  if (vFuel.length >= 2) {
+    for (let i = 1; i < vFuel.length; i++) {
+      const kmDiff = vFuel[i].kmTotal - vFuel[i-1].kmTotal;
+      const liters = vFuel[i].liters;
+      if (kmDiff > 0 && typeof liters === 'number' && liters > 0) {
+        consumptionData.push((kmDiff / liters).toFixed(2));
+        consumptionLabels.push(formatDate(vFuel[i].date));
+      }
+    }
+  }
+
+  // Expenses Chart Data (Last 6 months)
+  const expenseMap = {};
+  const today = new Date();
+  const mkKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    expenseMap[mkKey(d)] = 0;
+  }
+  
+  vFuel.forEach(l => {
+    const key = l.date.slice(0, 7);
+    if (expenseMap[key] !== undefined) {
+      expenseMap[key] += (l.totalCost || 0);
+    }
+  });
+
+  const expenseLabels = Object.keys(expenseMap).reverse().map(k => {
+    const [y, m] = k.split('-');
+    return new Date(y, m-1, 1).toLocaleDateString('pt-BR', { month: 'short' });
+  });
+  const expenseValues = Object.values(expenseMap).reverse();
+
+  // Create/Update Charts
+  const ctxCons = document.getElementById('chartConsumption')?.getContext('2d');
+  if (ctxCons) {
+    if (consumptionChart) consumptionChart.destroy();
+    consumptionChart = new Chart(ctxCons, {
+      type: 'line',
+      data: {
+        labels: consumptionLabels,
+        datasets: [{
+          label: 'km/L',
+          data: consumptionData,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+  }
+
+  const ctxExp = document.getElementById('chartExpenses')?.getContext('2d');
+  if (ctxExp) {
+    if (expensesChart) expensesChart.destroy();
+    expensesChart = new Chart(ctxExp, {
+      type: 'bar',
+      data: {
+        labels: expenseLabels,
+        datasets: [{
+          label: 'Gastos R$',
+          data: expenseValues,
+          backgroundColor: '#10b981',
+          borderRadius: 6
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+  }
+}
+
+function exportToExcel() {
+  const v = getActiveVehicle();
+  if (!v) { toast('Selecione um veículo!', 'error'); return; }
+
+  const fuelData = state.fuelLogs.filter(l => l.vehicleId === v.id).map(l => ({
+    Data: formatDate(l.date),
+    Combustivel: fuelLabel(l.fuelType),
+    Litros: l.liters,
+    'Preco/L': l.pricePerLiter,
+    Total: l.totalCost,
+    Odometro: l.kmTotal,
+    Posto: l.station || ''
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(fuelData);
+  XLSX.utils.book_append_sheet(wb, ws, "Abastecimentos");
+  XLSX.writeFile(wb, `KM_Track_${v.name}.xlsx`);
+  toast('Exportação concluída!', 'success');
+}
+
+function calculateFlex() {
+  const pg = parseFloat(document.getElementById('flexPriceGas').value) || 0;
+  const pa = parseFloat(document.getElementById('flexPriceAlc').value) || 0;
+  
+  const visual = document.getElementById('flexVisualArea');
+  const fill = document.getElementById('flexGaugeFill');
+  const verd = document.getElementById('flexVerdict');
+  const reas = document.getElementById('flexReasoning');
+  const card = document.querySelector('.flex-result-card');
+
+  if (!pg || !pa) {
+    visual.style.display = 'none';
+    return;
+  }
+  
+  const ratio = pa / pg;
+  visual.style.display = 'block';
+  
+  // UI Update
+  const width = Math.min(Math.max(ratio * 100, 0), 100);
+  fill.style.width = `${width}%`;
+
+  if (ratio <= 0.7) {
+    verd.textContent = '🌿 Álcool Venceu!';
+    verd.style.color = '#10b981';
+    fill.style.background = 'linear-gradient(90deg, #059669, #10b981)';
+    if (card) {
+      card.style.boxShadow = '0 10px 40px rgba(16, 185, 129, 0.15)';
+      card.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    }
+    reas.textContent = `Economia real detectada! O álcool custa apenas ${(ratio * 100).toFixed(1)}% da gasolina.`;
+  } else {
+    verd.textContent = '⛽ Gasolina Venceu!';
+    verd.style.color = '#0a84ff';
+    fill.style.background = 'linear-gradient(90deg, #0040dd, #0a84ff)';
+    if (card) {
+      card.style.boxShadow = '0 10px 40px rgba(10, 132, 255, 0.15)';
+      card.style.borderColor = 'rgba(10, 132, 255, 0.3)';
+    }
+    reas.textContent = `A gasolina é a melhor escolha. O álcool está em ${(ratio * 100).toFixed(1)}% do preço.`;
+  }
+}
+
+/* ==========================================
    INITIALIZATION
    ========================================== */
 
@@ -983,16 +1650,28 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.tab-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
-      navigateTo(item.dataset.page);
+      const page = item.dataset.page || item.id.replace('nav-', '');
+      navigateTo(page);
     });
   });
 
-  // --- iOS Header Vehicle Button
-  const vehicleBtn = document.getElementById('iosVehicleBtn');
-  if (vehicleBtn) {
-    vehicleBtn.addEventListener('click', () => {
-      navigateTo('vehicles');
+  // --- Header Action Center Listeners
+  const btnHeaderAdd = document.getElementById('headerAddFuel');
+  if (btnHeaderAdd) {
+    btnHeaderAdd.addEventListener('click', () => {
+      // FAB logic
+      document.getElementById('fabNewFuel').click();
     });
+  }
+
+  const btnVehicleHeader = document.getElementById('iosVehicleBtn');
+  if (btnVehicleHeader) {
+    btnVehicleHeader.addEventListener('click', () => navigateTo('vehicles'));
+  }
+
+  const btnSettingsHeader = document.getElementById('nav-settings-header');
+  if (btnSettingsHeader) {
+    btnSettingsHeader.addEventListener('click', () => navigateTo('settings'));
   }
 
   // --- Vehicle quick select: "Add vehicle" button
@@ -1092,11 +1771,13 @@ document.addEventListener('DOMContentLoaded', () => {
     histFilterMonth = e.target.value;
     renderHistory();
   });
-  document.getElementById('filterFuelType').addEventListener('change', (e) => {
+  const filterFuelType = document.getElementById('filterFuelType');
+  if (filterFuelType) filterFuelType.addEventListener('change', (e) => {
     histFilterFuelType = e.target.value;
     renderHistory();
   });
-  document.getElementById('btnClearFilters').addEventListener('click', () => {
+  const btnClearFilters = document.getElementById('btnClearFilters');
+  if (btnClearFilters) btnClearFilters.addEventListener('click', () => {
     histFilterMonth = '';
     histFilterFuelType = '';
     document.getElementById('filterMonth').value = '';
@@ -1104,10 +1785,21 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHistory();
   });
 
-  // --- Settings
-  document.getElementById('btnExport').addEventListener('click', exportData);
-  document.getElementById('importFile').addEventListener('change', importData);
-  document.getElementById('btnClearAllData').addEventListener('click', clearAllData);
+  // --- Settings & Auth Events
+  const btnExpS = document.getElementById('btnSettingsExport');
+  if (btnExpS) btnExpS.addEventListener('click', exportData);
+  
+  const btnClrS = document.getElementById('btnSettingsClear');
+  if (btnClrS) btnClrS.addEventListener('click', clearAllData);
+  
+  const btnLogoutS = document.getElementById('btnSettingsLogout');
+  if (btnLogoutS) btnLogoutS.addEventListener('click', logout);
+
+  const importFile = document.getElementById('importFile');
+  if (importFile) importFile.addEventListener('change', importData);
+
+  const btnLoginMain = document.getElementById('btnGoogleLoginMain');
+  if (btnLoginMain) btnLoginMain.addEventListener('click', loginWithGoogle);
 
   // --- Cancel edit fuel
   document.getElementById('btnCancelEditFuel').addEventListener('click', () => {
@@ -1139,24 +1831,289 @@ document.addEventListener('DOMContentLoaded', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  // Finalize
+  // Initial PWA check
+  initPWA();
+
   // --- Initial render
   setupFuelFormDefaults();
   setupKmFormDefaults();
   updateVehicleUI();
   renderDashboard();
 
+  // Onboarding Check
+  setTimeout(() => {
+    if (currentUser && !state.onboardingComplete) {
+      startTour();
+    }
+  }, 1000);
+
   // If no vehicle, open vehicle modal after a brief delay
   if (!state.vehicles.length) {
     setTimeout(() => openVehicleModal(), 600);
   }
 
-  // PWA: install banner dismiss button
-  const btnDismissInstall = document.getElementById('btnDismissInstall');
-  if (btnDismissInstall) {
-    btnDismissInstall.addEventListener('click', hideInstallBanner);
+
+  // --- Intelligence Phase Listeners
+  const btnExcel = document.getElementById('btnExportExcel');
+  if (btnExcel) btnExcel.addEventListener('click', exportToExcel);
+
+  // --- Flex Logic 2.0
+  const openFlex = () => {
+    document.getElementById('flexModalBackdrop').classList.add('open');
+    document.getElementById('flexVisualArea').style.display = 'none';
+    document.getElementById('flexPriceGas').value = '';
+    document.getElementById('flexPriceAlc').value = '';
+  };
+
+  const btnHeaderFlex = document.getElementById('headerFlexBtn');
+  if (btnHeaderFlex) btnHeaderFlex.addEventListener('click', openFlex);
+
+  const btnCloseFlex = document.getElementById('closeFlexModal');
+  if (btnCloseFlex) btnCloseFlex.addEventListener('click', () => {
+    document.getElementById('flexModalBackdrop').classList.remove('open');
+  });
+
+  const flexPriceGas = document.getElementById('flexPriceGas');
+  const flexPriceAlc = document.getElementById('flexPriceAlc');
+  if(flexPriceGas) flexPriceGas.addEventListener('input', calculateFlex);
+  if(flexPriceAlc) flexPriceAlc.addEventListener('input', calculateFlex);
+
+  // --- Trash Logic
+  function renderTrash() {
+    const list = document.getElementById('trashList');
+    if (!list) return;
+    
+    if (!state.trash || state.trash.length === 0) {
+      list.innerHTML = '<div class="empty-state"><span>🗑️</span><p>Lixeira vazia.</p></div>';
+      return;
+    }
+
+    list.innerHTML = state.trash.sort((a,b) => b.deletedAt.localeCompare(a.deletedAt)).map(item => {
+      let title = "Item Desconhecido";
+      let icon = "❓";
+      if (item.type === 'vehicle') { title = item.data.name; icon = "🚗"; }
+      if (item.type === 'fuel') { title = `Abast. ${fmt(item.data.totalCost)}`; icon = "⛽"; }
+      if (item.type === 'km') { title = `KM +${item.data.kmDiff}`; icon = "📍"; }
+
+      return `
+        <div class="trash-item">
+          <div class="trash-item-info">
+            <div class="trash-item-icon">${icon}</div>
+            <div class="trash-item-text">
+              <span class="trash-item-title">${title}</span>
+              <span class="trash-item-meta">Apagado em: ${formatDate(item.deletedAt.split('T')[0])}</span>
+            </div>
+          </div>
+          <div class="trash-item-actions">
+            <button class="btn btn-ghost btn-sm" onclick="restoreFromTrash('${item.trashId}')" title="Restaurar">🔄</button>
+            <button class="btn btn-ghost btn-danger btn-sm" onclick="permanentDelete('${item.trashId}')" title="Excluir Definitivamente">🛑</button>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
-  const btnInstallApp = document.getElementById('btnInstallApp');
-  if (btnInstallApp) {
-    btnInstallApp.addEventListener('click', triggerInstall);
+
+  window.restoreFromTrash = (trashId) => {
+    const idx = state.trash.findIndex(i => i.trashId === trashId);
+    if (idx === -1) return;
+    const item = state.trash[idx];
+
+    if (item.type === 'vehicle') {
+      state.vehicles.push(item.data);
+      if (item.relatedData) {
+        if (item.relatedData.fuel) state.fuelLogs.push(...item.relatedData.fuel);
+        if (item.relatedData.km) state.kmLogs.push(...item.relatedData.km);
+      }
+      renderVehicles();
+    } else if (item.type === 'fuel') {
+      state.fuelLogs.push(item.data);
+    } else if (item.type === 'km') {
+      state.kmLogs.push(item.data);
+    }
+
+    state.trash.splice(idx, 1);
+    saveState();
+    renderTrash();
+    renderDashboard();
+    renderHistory();
+    syncToCloud();
+    toast('Item restaurado com sucesso! 🔄', 'success');
+  };
+
+  window.permanentDelete = (trashId) => {
+    openConfirm('Excluir Definitivamente', 'Esta ação eliminará os dados para sempre. Continuar?', async () => {
+      const idx = state.trash.findIndex(i => i.trashId === trashId);
+      if (idx !== -1 && currentUser) {
+        try { await deleteDoc(doc(db, "users", currentUser.uid, "trash", trashId)); } catch(e){}
+      }
+      state.trash = state.trash.filter(i => i.trashId !== trashId);
+      saveState();
+      renderTrash();
+      syncToCloud();
+      toast('Item excluído permanentemente.', 'error');
+    });
+  };
+
+  const btnOpenTrash = document.getElementById('btnOpenTrash');
+  if (btnOpenTrash) btnOpenTrash.addEventListener('click', () => {
+    document.getElementById('trashModalBackdrop').classList.add('open');
+    renderTrash();
+  });
+
+  const btnCloseTrash = document.getElementById('closeTrashModal');
+  if (btnCloseTrash) btnCloseTrash.addEventListener('click', () => {
+    document.getElementById('trashModalBackdrop').classList.remove('open');
+  });
+
+  const btnClearTrash = document.getElementById('btnClearTrash');
+  if (btnClearTrash) btnClearTrash.addEventListener('click', () => {
+    if (!state.trash.length) return;
+    openConfirm('Esvaziar Lixeira', 'Deseja apagar TODOS os itens da lixeira permanentemente?', () => {
+      state.trash = [];
+      saveState();
+      renderTrash();
+      syncToCloud();
+      toast('Lixeira esvaziada! 🗑️', 'success');
+    });
+  });
+  setTimeout(() => {
+    if (currentUser && !state.onboardingComplete) {
+      startTour();
+    }
+  }, 1000);
+});
+
+/* ==========================================
+   ONBOARDING TOUR LOGIC
+   ========================================== */
+let tourStep = 0;
+const tourSteps = [
+  {
+    title: "Bem-vindo ao KM Track! ⛽",
+    text: "Vamos te mostrar como controlar seu veículo de forma simples. Clique em Próximo.",
+    target: null
+  },
+  {
+    title: "Dashboard Inteligente",
+    text: "Aqui você verá o resumo de gastos e alertas de manutenção do seu veículo ativo.",
+    target: "statKmTotal"
+  },
+  {
+    title: "Adicionar Registros",
+    text: "Use este botão '+' para registrar novos abastecimentos ou quilometragem a qualquer momento.",
+    target: "fabNewFuel"
+  },
+  {
+    title: "Seus Veículos",
+    text: "Nesta aba você pode cadastrar e alternar entre diferentes carros ou motos.",
+    target: "nav-vehicles"
+  },
+  {
+    title: "Sincronização Cloud",
+    text: "Seus dados estão protegidos em nuvem. Você pode acessar de qualquer lugar!",
+    target: "nav-settings"
+  }
+];
+
+function startTour() {
+  tourStep = 0;
+  const overlay = document.getElementById('tour-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  renderTourStep();
+}
+
+function renderTourStep() {
+  const step = tourSteps[tourStep];
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-text').textContent = step.text;
+  
+  const mask = document.querySelector('.tour-mask');
+  const tooltip = document.getElementById('tour-tooltip');
+  
+  if (step.target) {
+    const el = document.getElementById(step.target);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      mask.classList.add('highlight');
+      mask.style.clipPath = `circle(70px at ${rect.left + rect.width/2}px ${rect.top + rect.height/2}px)`;
+      
+      // Position tooltip
+      if (rect.top > window.innerHeight / 2) {
+        tooltip.style.top = 'auto';
+        tooltip.style.bottom = (window.innerHeight - rect.top + 20) + 'px';
+      } else {
+        tooltip.style.bottom = 'auto';
+        tooltip.style.top = (rect.bottom + 20) + 'px';
+      }
+    }
+  } else {
+    mask.classList.remove('highlight');
+    mask.style.clipPath = 'none';
+    tooltip.style.top = 'auto';
+    tooltip.style.bottom = 'auto';
+  }
+}
+
+const btnNextTour = document.getElementById('btnNextTour');
+if (btnNextTour) btnNextTour.addEventListener('click', () => {
+  tourStep++;
+  if (tourStep < tourSteps.length) {
+    renderTourStep();
+  } else {
+    endTour();
   }
 });
+
+const btnSkipTour = document.getElementById('btnSkipTour');
+if (btnSkipTour) btnSkipTour.addEventListener('click', endTour);
+
+function endTour() {
+  const overlay = document.getElementById('tour-overlay');
+  if (overlay) overlay.style.display = 'none';
+  state.onboardingComplete = true;
+  saveState();
+  
+  // Auto-open vehicle modal if no vehicles exist
+  if (!state.vehicles.length) {
+    openVehicleModal();
+  }
+}
+
+Object.assign(window, {
+  state,
+  setActiveVehicle,
+  openVehicleModal,
+  deleteVehicle,
+  editFuelLog,
+  deleteFuelLog,
+  editKmLog,
+  deleteKmLog,
+  startTour // Exported for manual re-run if needed
+});
+  // --- Profile Pic Viewer Logic
+  const avatar = document.getElementById('headerProfilePic');
+  const viewer = document.getElementById('imageViewerModal');
+  const fullImg = document.getElementById('fullSizeProfilePic');
+  const closeViewer = document.getElementById('closeImageViewer');
+
+  if (avatar) {
+    avatar.addEventListener('click', () => {
+      if (currentUser && currentUser.photoURL) {
+        fullImg.src = currentUser.photoURL;
+        viewer.classList.add('open');
+      }
+    });
+  }
+
+  if (closeViewer) {
+    closeViewer.addEventListener('click', () => {
+      viewer.classList.remove('open');
+    });
+  }
+
+  if (viewer) {
+    viewer.addEventListener('click', (e) => {
+      if (e.target === viewer) viewer.classList.remove('open');
+    });
+  }

@@ -439,6 +439,12 @@ function formatDate(str) {
   return `${d}/${m}/${y}`;
 }
 
+function formatTime(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function getMonthStr(date) {
   const d = new Date(date + 'T12:00:00');
   return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -972,7 +978,7 @@ function renderDashboard() {
   const lastFillCard = document.getElementById('lastFillCard');
   if (lastFill) {
     lastFillCard.innerHTML = `<div class="last-fill-info">
-      <div class="lf-row"><span class="lf-label">Data</span><span class="lf-value">${formatDate(lastFill.date)}</span></div>
+      <div class="lf-row"><span class="lf-label">Data</span><span class="lf-value">${formatDate(lastFill.date)} ${formatTime(lastFill.createdAt || new Date(lastFill.date + 'T12:00:00').getTime())}</span></div>
       <div class="lf-row"><span class="lf-label">Combustível</span><span class="fuel-badge ${lastFill.fuelType}">${fuelEmoji(lastFill.fuelType)} ${fuelLabel(lastFill.fuelType)}</span></div>
       <div class="lf-row"><span class="lf-label">Litros</span><span class="lf-value">${fmtNum(lastFill.liters, 2)} L</span></div>
       <div class="lf-row"><span class="lf-label">Valor total</span><span class="lf-value">${fmt(lastFill.totalCost)}</span></div>
@@ -1149,7 +1155,7 @@ function renderFuelHistory(vId) {
         <div class="hist-item-header">
           <div style="display:flex;align-items:center;gap:0.5rem;">
             <span class="fuel-badge ${l.fuelType}">${fuelEmoji(l.fuelType)} ${fuelLabel(l.fuelType)}</span>
-            <span class="hist-item-date">${formatDate(l.date)}</span>
+            <span class="hist-item-date">${formatDate(l.date)} ${formatTime(l.createdAt || new Date(l.date + 'T12:00:00').getTime())}</span>
           </div>
           <span class="hist-item-cost">${fmt(l.totalCost)}</span>
         </div>

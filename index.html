@@ -165,7 +165,7 @@
         <!-- Stats grid -->
         <div class="stats-grid">
           <div class="stat-card primary">
-            <div class="stat-icon">📏</div>
+            <div class="stat-icon">🛣️</div>
             <div class="stat-info">
               <span class="stat-value" id="statKmTotal">0</span>
               <span class="stat-label">KM Total do Veículo</span>
@@ -179,18 +179,43 @@
             </div>
           </div>
           <div class="stat-card warning">
-            <div class="stat-icon">🛢️</div>
+            <div class="stat-icon">⛽</div>
             <div class="stat-info">
               <span class="stat-value" id="statLitrosTotal">0 L</span>
               <span class="stat-label">Litros Abastecidos</span>
             </div>
           </div>
           <div class="stat-card info">
-            <div class="stat-icon">📈</div>
+            <div class="stat-icon">📊</div>
             <div class="stat-info">
               <span class="stat-value" id="statMediaConsumo">— km/L</span>
               <span class="stat-label">Média de Consumo</span>
             </div>
+          </div>
+        </div>
+
+        <div class="card consumption-summary-card">
+          <div class="card-header">
+            <h2 class="card-title">Consumo consolidado</h2>
+          </div>
+          <div class="card-body" id="consumptionOverview">
+            <div class="consumption-overview-row">
+              <span>Consumo médio consolidado</span>
+              <strong id="dashConsumoConsolidado">— km/L</strong>
+            </div>
+            <div class="consumption-overview-row">
+              <span>Consumo estimado</span>
+              <strong id="dashConsumoEstimado">— km/L</strong>
+            </div>
+            <div class="consumption-overview-row">
+              <span>Média móvel dos últimos 3 blocos</span>
+              <strong id="dashMediaMovel">— km/L</strong>
+            </div>
+            <div class="consumption-overview-row">
+              <span>Nível de confiança</span>
+              <strong id="dashConfianca">—</strong>
+            </div>
+            <div class="consumption-warning" id="dashConfiancaMessage">Dados insuficientes para calcular uma média confiável.</div>
           </div>
         </div>
 
@@ -215,7 +240,7 @@
         </div>
 
         <!-- Monthly summary -->
-        <div class="card">
+        <div class="card monthly-summary-card">
           <div class="card-header">
             <h2 class="card-title">Resumo do Mês</h2>
             <span class="badge badge-primary" id="monthLabel"></span>
@@ -237,29 +262,25 @@
                 </div>
               </div>
               <div class="summary-card">
-                <div class="summary-icon">📍</div>
+                <div class="summary-icon">🛣️</div>
                 <div class="summary-info">
                   <span class="summary-label">KM Rodados</span>
                   <span class="summary-value" id="msKm">0 km</span>
                 </div>
               </div>
-              <div class="month-stat">
-                <span class="ms-icon">📅</span>
-                <div class="ms-info">
-                  <span class="ms-value" id="msAbast">0</span>
-                  <span class="ms-label">Abastecimentos</span>
-                </div>
-              </div>
-              <div class="month-stat">
-                <span class="ms-icon">📏</span>
-                <div class="ms-info">
-                  <span class="ms-value" id="msKm">0 km</span>
-                  <span class="ms-label">KM rodados (registrados)</span>
+              <div class="summary-card">
+                <div class="summary-icon">📅</div>
+                <div class="summary-info">
+                  <span class="summary-label">Abastecimentos</span>
+                  <span class="summary-value" id="msAbast">0</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
+        
+        <!-- Bottom spacing -->
+        <div style="height: 2rem;"></div>
       </section>
 
       <!-- ===== REGISTER FUEL ===== -->
@@ -306,7 +327,21 @@
                 <input type="hidden" id="selectedFuelType" value="gasolina" />
               </div>
 
-              <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Modo de inserção</label>
+                <div class="radio-group">
+                  <label class="radio-label">
+                    <input type="radio" name="fuelInputMode" value="liters" checked />
+                    <span>Inserir quantidade de litros</span>
+                  </label>
+                  <label class="radio-label">
+                    <input type="radio" name="fuelInputMode" value="total" />
+                    <span>Inserir valor total pago</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-row" id="litersMode">
                 <div class="form-group">
                   <label class="form-label" for="fuelLiters">Litros abastecidos</label>
                   <div class="input-group">
@@ -323,19 +358,28 @@
                 </div>
               </div>
 
-              <div class="form-row">
+              <div class="form-row" id="totalMode" style="display: none;">
                 <div class="form-group">
                   <label class="form-label" for="fuelTotalCost">Valor total pago</label>
                   <div class="input-group">
                     <span class="input-prefix">R$</span>
-                    <input type="number" id="fuelTotalCost" class="form-input" placeholder="Calculado automaticamente" min="0" step="0.01" />
+                    <input type="number" id="fuelTotalCost" class="form-input" placeholder="Ex: 237.80" min="0" step="0.01" required />
                   </div>
-                  <span class="form-hint">Preenchido automaticamente ou informe o valor total</span>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Calculadora Flex</label>
-                  <button type="button" class="btn btn-ghost btn-sm" id="btnFlexCalc" style="height: 44px; border: 1px dashed var(--border);">⚖️ Álcool vs Gás</button>
+                  <label class="form-label" for="fuelPricePerLiterTotal">Preço por litro</label>
+                  <div class="input-group">
+                    <span class="input-prefix">R$</span>
+                    <input type="number" id="fuelPricePerLiterTotal" class="form-input" placeholder="Ex: 5.89" min="0" step="0.01" required />
+                  </div>
                 </div>
+              </div>
+
+              <div class="form-group checkbox-group">
+                <label class="checkbox-label" for="fuelTankFull">
+                  <input type="checkbox" id="fuelTankFull" />
+                  <span>Completei o tanque</span>
+                </label>
               </div>
 
               <div class="form-group">

@@ -151,10 +151,30 @@ function defaultState() {
 
 let state = defaultState();
 
+function normalizeFuelLog(log) {
+  if (!log || typeof log !== 'object') return null;
+  const litersValue = Number(log.liters || log.litros || 0);
+  return {
+    ...log,
+    litros: litersValue,
+    liters: litersValue,
+    kmTotal: Number(log.kmTotal || log.km || 0),
+    tanqueCheio: !!(log.tanqueCheio || log.tankCheio),
+  };
+}
+
+function normalizeFuelLogs(logs = []) {
+  if (!Array.isArray(logs)) return [];
+  return logs.map(normalizeFuelLog).filter(Boolean);
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) state = { ...defaultState(), ...JSON.parse(raw) };
+    if (raw) {
+      state = { ...defaultState(), ...JSON.parse(raw) };
+      state.fuelLogs = normalizeFuelLogs(state.fuelLogs);
+    }
   } catch (e) { console.warn('Failed to load state', e); }
 }
 
@@ -262,7 +282,7 @@ async function loadFromCloud() {
         state = { 
           ...defaultState(), 
           vehicles: cloudVehicles,
-          fuelLogs: cloudFuel,
+          fuelLogs: normalizeFuelLogs(cloudFuel),
           kmLogs: cloudKm,
           trash: cloudTrash,
           activeVehicleId: cloudActiveId || cloudVehicles[0]?.id || null,
@@ -776,19 +796,38 @@ function saveFuel(e) {
     return;
   }
 
-  const liters = parseFloat(document.getElementById('fuelLiters').value) || 0;
-  const ppl = parseFloat(document.getElementById('fuelPricePerLiter').value) || 0;
-  let total = parseFloat(document.getElementById('fuelTotalCost').value) || 0;
-  if (!total && liters && ppl) total = liters * ppl;
+  const mode = document.querySelector('input[name="fuelInputMode"]:checked').value;
+  let liters, ppl, total;
+
+  if (mode === 'liters') {
+    liters = parseFloat(document.getElementById('fuelLiters').value) || 0;
+    ppl = parseFloat(document.getElementById('fuelPricePerLiter').value) || 0;
+    total = liters * ppl;
+  } else {
+    total = parseFloat(document.getElementById('fuelTotalCost').value) || 0;
+    ppl = parseFloat(document.getElementById('fuelPricePerLiterTotal').value) || 0;
+    liters = total / ppl;
+  }
 
   const date = document.getElementById('fuelDate').value;
   const kmTotal = parseFloat(document.getElementById('fuelKmTotal').value) || 0;
+  const tanqueCheio = document.getElementById('fuelTankFull').checked;
 
   if (!date) { toast('Informe a data.', 'error'); return; }
   if (!kmTotal) { toast('Informe o KM do odômetro.', 'error'); return; }
-  if (!liters && !total) { toast('Informe os litros ou o valor total.', 'error'); return; }
+  if (liters <= 0) { toast('Quantidade inválida.', 'error'); return; }
+  if (ppl <= 0) { toast('Preço por litro inválido.', 'error'); return; }
+  if (total <= 0) { toast('Valor total inválido.', 'error'); return; }
 
   const editingId = document.getElementById('fuelEditId').value;
+  const existingFuel = state.fuelLogs.filter(l => l.vehicleId === state.activeVehicleId && l.id !== editingId);
+  const highestKm = existingFuel.reduce((max, l) => Math.max(max, Number(l.kmTotal || 0)), 0);
+  
+  // For edits, be more lenient with km validation
+  if (!editingId && kmTotal <= highestKm) {
+    toast('O odômetro deve ser maior que o último registro válido.', 'error');
+    return;
+  }
 
   const log = {
     id: editingId || uid(),
@@ -801,6 +840,7 @@ function saveFuel(e) {
     totalCost: total,
     station: document.getElementById('fuelStation').value.trim(),
     notes: document.getElementById('fuelNotes').value.trim(),
+    tanqueCheio,
     location: null
   };
 
@@ -959,32 +999,59 @@ function renderDashboard() {
   const gastoTotal = vFuel.reduce((s, l) => s + (l.totalCost || 0), 0);
   const litrosTotal = vFuel.reduce((s, l) => s + (l.liters || 0), 0);
 
-  // Media consumo: KM diff entre primeiro e ultimo abastecimento / litros
-  let mediaConsumo = '—';
-  if (vFuel.length >= 2) {
-    const sorted = [...vFuel].sort((a, b) => a.date.localeCompare(b.date));
-    const kmDiff = sorted[sorted.length - 1].kmTotal - sorted[0].kmTotal;
-    const litrosUsados = sorted.slice(1).reduce((s, l) => s + (l.liters || 0), 0);
-    if (litrosUsados > 0) mediaConsumo = fmtNum(kmDiff / litrosUsados, 1) + ' km/L';
-  }
+  const consumoData = calcularConsumo(vFuel, {
+    litrosMinimos: 10,
+    qtdeAbastecimentos: 3
+  });
+
+  const mediaConsumo = consumoData.consumoConsolidado ? fmtNum(consumoData.consumoConsolidado, 1) + ' km/L' : '—';
+  const consumoEstimadoLabel = consumoData.consumoEstimado ? fmtNum(consumoData.consumoEstimado, 1) + ' km/L' : '—';
+  const mediaMovelLabel = consumoData.mediaMovel3Blocos ? fmtNum(consumoData.mediaMovel3Blocos, 1) + ' km/L' : '—';
+  const confiancaLabel = consumoData.confianca ? consumoData.confianca.toUpperCase() : '—';
 
   document.getElementById('statKmTotal').textContent = fmtNum(kmTotal) + ' km';
   document.getElementById('statGastoTotal').textContent = fmt(gastoTotal);
   document.getElementById('statLitrosTotal').textContent = fmtNum(litrosTotal, 1) + ' L';
   document.getElementById('statMediaConsumo').textContent = mediaConsumo;
+  document.getElementById('dashConsumoConsolidado').textContent = mediaConsumo;
+  document.getElementById('dashConsumoEstimado').textContent = consumoEstimadoLabel;
+  document.getElementById('dashMediaMovel').textContent = mediaMovelLabel;
+  document.getElementById('dashConfianca').textContent = confiancaLabel;
+  document.getElementById('dashConfiancaMessage').style.display = consumoData.blocos.length ? 'none' : 'block';
 
   // Last fill
   const lastFill = vFuel[0];
   const lastFillCard = document.getElementById('lastFillCard');
   if (lastFill) {
     lastFillCard.innerHTML = `<div class="last-fill-info">
-      <div class="lf-row"><span class="lf-label">Data</span><span class="lf-value">${formatDate(lastFill.date)} ${formatTime(lastFill.createdAt || new Date(lastFill.date + 'T12:00:00').getTime())}</span></div>
-      <div class="lf-row"><span class="lf-label">Combustível</span><span class="fuel-badge ${lastFill.fuelType}">${fuelEmoji(lastFill.fuelType)} ${fuelLabel(lastFill.fuelType)}</span></div>
-      <div class="lf-row"><span class="lf-label">Litros</span><span class="lf-value">${fmtNum(lastFill.liters, 2)} L</span></div>
-      <div class="lf-row"><span class="lf-label">Valor total</span><span class="lf-value">${fmt(lastFill.totalCost)}</span></div>
-      <div class="lf-row"><span class="lf-label">Preço/L</span><span class="lf-value">${fmt(lastFill.pricePerLiter)}</span></div>
-      ${lastFill.station ? `<div class="lf-row"><span class="lf-label">Posto</span><span class="lf-value">${escHtml(lastFill.station)}</span></div>` : ''}
-      <div class="lf-row"><span class="lf-label">Odômetro</span><span class="lf-value">${fmtNum(lastFill.kmTotal)} km</span></div>
+      <div class="last-fill-header">
+        <div class="fuel-badge ${lastFill.fuelType}">${fuelEmoji(lastFill.fuelType)} ${fuelLabel(lastFill.fuelType)}</div>
+        <div class="last-fill-date">${formatDate(lastFill.date)} ${formatTime(lastFill.createdAt || new Date(lastFill.date + 'T12:00:00').getTime())}</div>
+      </div>
+      
+      <div class="last-fill-main">
+        <div class="last-fill-item">
+          <div class="last-fill-item-label">Litros</div>
+          <div class="last-fill-item-value">${fmtNum(lastFill.liters, 2)} L</div>
+        </div>
+        <div class="last-fill-item">
+          <div class="last-fill-item-label">Valor Total</div>
+          <div class="last-fill-item-value">${fmt(lastFill.totalCost)}</div>
+        </div>
+      </div>
+      
+      <div class="last-fill-secondary">
+        <div class="last-fill-row">
+          <span class="last-fill-row-label">Preço por Litro</span>
+          <span class="last-fill-row-value">${fmt(lastFill.pricePerLiter)}</span>
+        </div>
+        <div class="last-fill-row">
+          <span class="last-fill-row-label">Odômetro</span>
+          <span class="last-fill-row-value">${fmtNum(lastFill.kmTotal)} km</span>
+        </div>
+        ${lastFill.station ? `<div class="last-fill-row"><span class="last-fill-row-label">Posto</span><span class="last-fill-row-value">${escHtml(lastFill.station)}</span></div>` : ''}
+        ${lastFill.tanqueCheio ? `<div class="last-fill-row"><span class="last-fill-row-label">Status</span><span class="last-fill-row-value">Tanque Cheio</span></div>` : ''}
+      </div>
     </div>`;
   } else {
     lastFillCard.innerHTML = '<div class="empty-state"><span>⛽</span><p>Nenhum abastecimento registrado.</p></div>';
@@ -996,8 +1063,17 @@ function renderDashboard() {
   if (kmToday.length) {
     const totalToday = kmToday.reduce((s, l) => s + (l.kmDiff || 0), 0);
     kmTodayCard.innerHTML = `<div class="last-fill-info">
-      <div class="lf-row"><span class="lf-label">KM rodados hoje</span><span class="lf-value" style="color:var(--success);font-size:1.1rem;">${fmtNum(totalToday)} km</span></div>
-      ${kmToday.map(l => `<div class="lf-row"><span class="lf-label">${purposeIcon(l.purpose)} ${purposeLabel(l.purpose)}</span><span class="lf-value">${fmtNum(l.kmDiff)} km</span></div>`).join('')}
+      <div class="last-fill-header">
+        <div style="font-size: 1.2rem; font-weight: 700; color: var(--success);">${fmtNum(totalToday)} km</div>
+        <div class="last-fill-date">Total de hoje</div>
+      </div>
+      
+      <div class="last-fill-secondary">
+        ${kmToday.map(l => `<div class="last-fill-row">
+          <span class="last-fill-row-label">${purposeIcon(l.purpose)} ${purposeLabel(l.purpose)}</span>
+          <span class="last-fill-row-value">${fmtNum(l.kmDiff)} km</span>
+        </div>`).join('')}
+      </div>
     </div>`;
   } else {
     kmTodayCard.innerHTML = '<div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>';
@@ -1144,13 +1220,25 @@ function renderFuelHistory(vId) {
   if (histFilterMonth) fuelLogs = fuelLogs.filter(l => l.date?.startsWith(histFilterMonth));
   if (histFilterFuelType) fuelLogs = fuelLogs.filter(l => l.fuelType === histFilterFuelType);
 
+  const consumptionData = calcularConsumo(fuelLogs, {
+    litrosMinimos: 10,
+    qtdeAbastecimentos: 3
+  });
+
   const container = document.getElementById('fuelHistoryList');
   if (!fuelLogs.length) {
     container.innerHTML = '<div class="empty-state"><span>⛽</span><p>Nenhum registro encontrado.</p></div>';
     return;
   }
 
-    container.innerHTML = fuelLogs.map(l => `
+    container.innerHTML = fuelLogs.map(l => {
+      const isClosed = consumptionData.registrosPorBloco[l.id] !== undefined;
+      const isCurrent = consumptionData.registrosNoBlocoAtual[l.id];
+      const statusBadge = isClosed ? '<span class="hist-badge closed-block">Bloco consolidado</span>' : isCurrent ? '<span class="hist-badge open-block">Bloco atual</span>' : '';
+      const fullTankBadge = l.tanqueCheio ? '<span class="hist-badge full-tank">Tanque cheio</span>' : '';
+      const stationHtml = l.station ? `<span class="hist-detail">⛽ <span>${escHtml(l.station)}</span></span>` : '';
+
+      return `
       <div class="hist-item fuel-entry">
         <div class="hist-item-header">
           <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1162,14 +1250,19 @@ function renderFuelHistory(vId) {
         <div class="hist-item-details">
           <span class="hist-detail">📍 <span>${fmtNum(l.kmTotal)} km</span></span>
           <span class="hist-detail">⛽ <span>${fmtNum(l.liters, 2)} L (${fmt(l.pricePerLiter)}/L)</span></span>
-          ${l.station ? `<span class="hist-detail">⛽ <span>${escHtml(l.station)}</span></span>` : ''}
+          ${stationHtml}
+        </div>
+        <div class="hist-item-tags">
+          ${statusBadge}
+          ${fullTankBadge}
         </div>
         <div class="hist-item-actions">
           <button class="btn btn-ghost btn-sm" onclick="editFuelLog('${l.id}')">✏️ Editar</button>
           <button class="btn btn-ghost btn-sm" onclick="deleteFuelLog('${l.id}')">🗑️</button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderKmHistory(vId) {
@@ -1339,15 +1432,27 @@ function editFuelLog(id) {
   document.getElementById('fuelKmTotal').value = log.kmTotal || '';
   document.getElementById('fuelLiters').value = log.liters || '';
   document.getElementById('fuelPricePerLiter').value = log.pricePerLiter || '';
+  document.getElementById('fuelPricePerLiterTotal').value = log.pricePerLiter || '';
   document.getElementById('fuelTotalCost').value = log.totalCost || '';
   document.getElementById('fuelStation').value = log.station || '';
   document.getElementById('fuelNotes').value = log.notes || '';
+  document.getElementById('fuelTankFull').checked = !!log.tanqueCheio;
 
   // Set fuel type
   document.getElementById('selectedFuelType').value = log.fuelType || 'gasolina';
   document.querySelectorAll('.fuel-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.type === log.fuelType);
   });
+
+  // Set input mode to liters for editing
+  const litersRadio = document.querySelector('input[name="fuelInputMode"][value="liters"]');
+  if (litersRadio) litersRadio.checked = true;
+  document.getElementById('litersMode').style.display = 'flex';
+  document.getElementById('totalMode').style.display = 'none';
+  document.getElementById('fuelLiters').required = true;
+  document.getElementById('fuelTotalCost').required = false;
+  document.getElementById('fuelPricePerLiter').required = true;
+  document.getElementById('fuelPricePerLiterTotal').required = false;
 
   updateFuelFormMode(true);
   recalcFuelCost();
@@ -1420,7 +1525,18 @@ function updateKmFormMode(isEditing) {
 function setupFuelFormDefaults() {
   document.getElementById('fuelDate').value = todayStr();
   document.getElementById('selectedFuelType').value = 'gasolina';
+  document.getElementById('fuelTankFull').checked = false;
   document.querySelectorAll('.fuel-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+
+  // Reset input mode to liters
+  const litersRadio = document.querySelector('input[name="fuelInputMode"][value="liters"]');
+  if (litersRadio) litersRadio.checked = true;
+  document.getElementById('litersMode').style.display = 'flex';
+  document.getElementById('totalMode').style.display = 'none';
+  document.getElementById('fuelLiters').required = true;
+  document.getElementById('fuelTotalCost').required = false;
+  document.getElementById('fuelPricePerLiter').required = true;
+  document.getElementById('fuelPricePerLiterTotal').required = false;
 
   // Pre-fill odometer with last known KM
   if (state.activeVehicleId) {
@@ -1429,6 +1545,133 @@ function setupFuelFormDefaults() {
       document.getElementById('fuelKmTotal').value = v.kmInitial;
     }
   }
+}
+
+function calcularConsumo(registros, config = {}) {
+  const logs = normalizeFuelLogs(registros)
+    .filter(log => log.kmTotal > 0 && log.litros > 0)
+    .sort((a, b) => (a.kmTotal - b.kmTotal) || a.date.localeCompare(b.date || '') || ((a.createdAt || 0) - (b.createdAt || 0)));
+
+  const result = {
+    consumoConsolidado: null,
+    consumoEstimado: null,
+    mediaMovel3Blocos: null,
+    confianca: 'baixa',
+    blocos: [],
+    blocoAtual: null,
+    totalRegistrosValidos: logs.length,
+    registrosPorBloco: {},
+    registrosNoBlocoAtual: {}
+  };
+
+  if (!logs.length) return result;
+
+  let prevLog = null;
+  let currentBlock = null;
+
+  const pushClosedBlock = (closedBlock) => {
+    const index = result.blocos.length;
+    result.blocos.push({ ...closedBlock });
+    closedBlock.logIds.forEach(id => {
+      result.registrosPorBloco[id] = index;
+    });
+  };
+
+  for (const log of logs) {
+    if (!prevLog) {
+      currentBlock = {
+        inicioOdometro: log.kmTotal,
+        fimOdometro: log.kmTotal,
+        distancia: 0,
+        litros: 0,
+        consumoKmL: null,
+        quantidadeAbastecimentos: 1,
+        fechadoPor: null,
+        logIds: [log.id]
+      };
+      prevLog = log;
+      continue;
+    }
+
+    const distance = log.kmTotal - prevLog.kmTotal;
+    if (distance <= 0) {
+      continue;
+    }
+
+    currentBlock.logIds.push(log.id);
+    currentBlock.fimOdometro = log.kmTotal;
+    currentBlock.distancia = log.kmTotal - currentBlock.inicioOdometro;
+    currentBlock.litros += log.litros;
+    currentBlock.quantidadeAbastecimentos += 1;
+
+    const closedBy = log.tanqueCheio
+      ? 'tanque_cheio'
+      : currentBlock.litros >= (config.litrosMinimos || 10)
+        ? 'litros_minimos'
+        : currentBlock.quantidadeAbastecimentos >= (config.qtdeAbastecimentos || 3)
+          ? 'qtde_abastecimentos'
+          : null;
+
+    if (closedBy) {
+      currentBlock.fechadoPor = closedBy;
+      currentBlock.consumoKmL = currentBlock.litros > 0 ? currentBlock.distancia / currentBlock.litros : null;
+      pushClosedBlock(currentBlock);
+      currentBlock = {
+        inicioOdometro: log.kmTotal,
+        fimOdometro: log.kmTotal,
+        distancia: 0,
+        litros: 0,
+        consumoKmL: null,
+        quantidadeAbastecimentos: 1,
+        fechadoPor: null,
+        logIds: [log.id]
+      };
+    }
+
+    prevLog = log;
+  }
+
+  if (currentBlock && !currentBlock.fechadoPor && currentBlock.logIds.length > 1) {
+    result.blocoAtual = { ...currentBlock };
+    result.consumoEstimado = currentBlock.litros > 0 ? currentBlock.distancia / currentBlock.litros : null;
+    currentBlock.logIds.forEach(id => {
+      result.registrosNoBlocoAtual[id] = true;
+    });
+  } else {
+    result.blocoAtual = {
+      inicioOdometro: null,
+      fimOdometro: null,
+      distancia: 0,
+      litros: 0,
+      consumoKmL: null,
+      quantidadeAbastecimentos: 0,
+      fechadoPor: null,
+      logIds: []
+    };
+  }
+
+  if (result.blocos.length) {
+    const totalDistance = result.blocos.reduce((sum, bloco) => sum + (bloco.distancia || 0), 0);
+    const totalLiters = result.blocos.reduce((sum, bloco) => sum + (bloco.litros || 0), 0);
+    if (totalLiters > 0) {
+      result.consumoConsolidado = totalDistance / totalLiters;
+    }
+
+    const lastBlocks = result.blocos.slice(-3);
+    if (lastBlocks.length) {
+      result.mediaMovel3Blocos = lastBlocks.reduce((sum, bloco) => sum + (bloco.consumoKmL || 0), 0) / lastBlocks.length;
+    }
+    result.confianca = 'alta';
+  } else {
+    const openLiters = result.blocoAtual?.litros || 0;
+    if (openLiters >= 6) {
+      result.confianca = 'media';
+    } else {
+      result.confianca = 'baixa';
+    }
+  }
+
+  return result;
 }
 
 function setupKmFormDefaults() {
@@ -1443,19 +1686,23 @@ function setupKmFormDefaults() {
 }
 
 function recalcFuelCost() {
-  const liters = parseFloat(document.getElementById('fuelLiters').value) || 0;
-  const ppl = parseFloat(document.getElementById('fuelPricePerLiter').value) || 0;
+  const mode = document.querySelector('input[name="fuelInputMode"]:checked').value;
+  let totalCost = 0;
 
-  if (liters > 0 && ppl > 0) {
-    const total = liters * ppl;
-    document.getElementById('fuelTotalCost').value = total.toFixed(2);
+  if (mode === 'liters') {
+    const liters = parseFloat(document.getElementById('fuelLiters').value) || 0;
+    const ppl = parseFloat(document.getElementById('fuelPricePerLiter').value) || 0;
+    if (liters > 0 && ppl > 0) {
+      totalCost = liters * ppl;
+    }
+  } else {
+    totalCost = parseFloat(document.getElementById('fuelTotalCost').value) || 0;
   }
 
   // Calc cost per km estimate
   const km = parseFloat(document.getElementById('fuelKmTotal').value) || 0;
   const v = getActiveVehicle();
   const prevKm = v ? (v.kmInitial || 0) : 0;
-  const totalCost = parseFloat(document.getElementById('fuelTotalCost').value) || 0;
 
   const prev = document.getElementById('calcPreview');
   if (totalCost > 0 && km > prevKm) {
@@ -1741,18 +1988,40 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectedFuelType').value = btn.dataset.type;
   });
 
+  // Fuel input mode
+  document.querySelectorAll('input[name="fuelInputMode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const mode = e.target.value;
+      const litersMode = document.getElementById('litersMode');
+      const totalMode = document.getElementById('totalMode');
+      const litersInput = document.getElementById('fuelLiters');
+      const totalInput = document.getElementById('fuelTotalCost');
+      const pplInput = document.getElementById('fuelPricePerLiter');
+      const pplTotalInput = document.getElementById('fuelPricePerLiterTotal');
+
+      if (mode === 'liters') {
+        litersMode.style.display = 'flex';
+        totalMode.style.display = 'none';
+        litersInput.required = true;
+        totalInput.required = false;
+        pplInput.required = true;
+        pplTotalInput.required = false;
+      } else {
+        litersMode.style.display = 'none';
+        totalMode.style.display = 'flex';
+        litersInput.required = false;
+        totalInput.required = true;
+        pplInput.required = false;
+        pplTotalInput.required = true;
+      }
+    });
+  });
+
   // Auto calc
   document.getElementById('fuelLiters').addEventListener('input', recalcFuelCost);
   document.getElementById('fuelPricePerLiter').addEventListener('input', recalcFuelCost);
-  document.getElementById('fuelTotalCost').addEventListener('input', () => {
-    // If user fills total manually, backfill pricePerLiter
-    const total = parseFloat(document.getElementById('fuelTotalCost').value) || 0;
-    const liters = parseFloat(document.getElementById('fuelLiters').value) || 0;
-    if (total > 0 && liters > 0) {
-      document.getElementById('fuelPricePerLiter').value = (total / liters).toFixed(3);
-    }
-    recalcFuelCost();
-  });
+  document.getElementById('fuelTotalCost').addEventListener('input', recalcFuelCost);
+  document.getElementById('fuelPricePerLiterTotal').addEventListener('input', recalcFuelCost);
   document.getElementById('fuelKmTotal').addEventListener('input', recalcFuelCost);
 
   // --- KM form

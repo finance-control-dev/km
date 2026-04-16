@@ -402,8 +402,20 @@ input, textarea, select { font-family: inherit; }
   color: var(--text);
   margin: 0;
 }
-.dashboard-grid .card-body {
+..dashboard-grid .card-body {
   padding: 1.25rem;
+}
+
+@media (max-width: 700px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-grid .card {
+    min-height: auto;
+  }
+  .dashboard-grid .empty-state {
+    padding: 2rem 1rem;
+  }
 }
 
 /* Fuel badges */

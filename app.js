@@ -1125,16 +1125,23 @@ function renderDashboard() {
   document.getElementById('msAbast').textContent = monthFuel.length;
   
   // Calculate Monthly KM Traveled (User Logic: Current KM - First KM of Month)
-  let monthlyKm = 0;
-  if (monthFuel.length > 0) {
-    const firstFuel = [...monthFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0];
-    const firstKmOfMonth = Number(firstFuel.kmTotal || 0);
-    monthlyKm = Math.max(0, currentKm - firstKmOfMonth);
-  } else if (monthKm.length > 0) {
-    const firstKmEntry = [...monthKm].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0];
-    const firstKmOfMonth = Number(firstKmEntry.kmStart || 0);
-    monthlyKm = Math.max(0, currentKm - firstKmOfMonth);
+  let firstKmOfMonth = null;
+  const firstFuel = monthFuel.length > 0 ? [...monthFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0] : null;
+  const firstKmEntry = monthKm.length > 0 ? [...monthKm].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0] : null;
+
+  if (firstFuel && firstKmEntry) {
+    if (firstFuel.date <= firstKmEntry.date) {
+      firstKmOfMonth = Number(firstFuel.kmTotal || 0);
+    } else {
+      firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
+    }
+  } else if (firstFuel) {
+    firstKmOfMonth = Number(firstFuel.kmTotal || 0);
+  } else if (firstKmEntry) {
+    firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
   }
+
+  const monthlyKm = firstKmOfMonth !== null ? Math.max(0, currentKm - firstKmOfMonth) : 0;
   document.getElementById('msKm').textContent = fmtNum(monthlyKm) + ' km';
 
   // Maintenance Alerts

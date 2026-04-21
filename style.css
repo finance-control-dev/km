@@ -310,40 +310,40 @@ input, textarea, select { font-family: inherit; }
   margin-bottom: 2rem; 
 }
 .stat-card {
-  padding: 1.25rem 1rem;
+  padding: 1.5rem 1.25rem;
   border-radius: 20px;
-  background: var(--surface);
+  background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015), var(--surface));
   display: flex; 
   flex-direction: column; 
-  gap: 0.35rem;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.12), inset 0 1px 1px rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
+  gap: 0.5rem;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.14);
   transition: var(--transition);
   position: relative;
   overflow: hidden;
 }
 
 .stat-icon { 
-  font-size: 1.1rem; 
-  margin-bottom: 0.1rem;
-  opacity: 0.85;
-  background: rgba(255,255,255,0.06);
-  width: 32px;
-  height: 32px;
+  font-size: 1.3rem; 
+  margin-bottom: 0.2rem;
+  opacity: 0.95;
+  background: rgba(255,255,255,0.08);
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 .stat-value { 
-  font-size: 1.25rem; 
+  font-size: 1.45rem; 
   font-weight: 800; 
   letter-spacing: -0.3px;
   color: var(--text);
   line-height: 1.2;
 }
 .stat-label { 
-  font-size: 0.62rem; 
+  font-size: 0.68rem; 
   color: var(--text-muted); 
   font-weight: 700;
   text-transform: uppercase;
@@ -457,24 +457,28 @@ input, textarea, select { font-family: inherit; }
   }
   
   .stat-card {
-    padding: 0.85rem 0.7rem;
-    gap: 0.2rem;
-    border-radius: 16px;
+    padding: 1.15rem 0.95rem;
+    gap: 0.35rem;
+    border-radius: 18px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
   }
   .stat-icon {
-    width: 24px;
-    height: 24px;
-    font-size: 0.9rem;
+    width: 34px;
+    height: 34px;
+    font-size: 1.1rem;
     margin-bottom: 0.1rem;
-    border-radius: 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
   }
   .stat-value {
-    font-size: 0.95rem;
+    font-size: 1.25rem;
   }
   .stat-label {
-    font-size: 0.52rem;
-    letter-spacing: 0.3px;
-    opacity: 0.7;
+    font-size: 0.6rem;
+    letter-spacing: 0.4px;
+    opacity: 0.8;
   }
 }
 
@@ -1327,18 +1331,24 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
   }
   .last-fill-item {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.45rem 0.6rem;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0.5rem 0.6rem;
     background: rgba(255,255,255,0.02);
-    border-radius: 10px;
+    border-radius: 12px;
+    gap: 0.15rem;
   }
   .last-fill-item-label {
     font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
     margin-bottom: 0;
   }
   .last-fill-item-value {
-    font-size: 0.78rem;
+    font-size: 0.85rem;
     font-weight: 800;
   }
   .last-fill-secondary {

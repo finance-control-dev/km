@@ -1006,7 +1006,8 @@ function renderDashboard() {
   const today = todayStr();
   const mk = currentMonthKey();
   document.getElementById('dashDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  document.getElementById('monthLabel').textContent = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const _d = new Date();
+  document.getElementById('monthLabel').textContent = String(_d.getMonth() + 1).padStart(2, '0') + '/' + String(_d.getFullYear()).slice(-2);
 
   const v = getActiveVehicle();
   const vId = v?.id || null;
@@ -1069,18 +1070,18 @@ function renderDashboard() {
       
       <div class="last-fill-main">
         <div class="last-fill-item">
-          <div class="last-fill-item-label">Litros</div>
+          <div class="last-fill-item-label">LITROS</div>
           <div class="last-fill-item-value">${fmtNum(lastFill.liters, 2)} L</div>
         </div>
         <div class="last-fill-item">
-          <div class="last-fill-item-label">Valor Total</div>
+          <div class="last-fill-item-label">TOTAL</div>
           <div class="last-fill-item-value">${fmt(lastFill.totalCost)}</div>
         </div>
       </div>
       
       <div class="last-fill-secondary">
         <div class="last-fill-row">
-          <span class="last-fill-row-label">Preço por Litro</span>
+          <span class="last-fill-row-label">Preço/L</span>
           <span class="last-fill-row-value">${fmt(lastFill.pricePerLiter)}</span>
         </div>
         <div class="last-fill-row">

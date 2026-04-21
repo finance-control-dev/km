@@ -194,34 +194,11 @@
           </div>
         </div>
 
-        <div class="card consumption-summary-card">
-          <div class="card-header">
-            <h2 class="card-title">Consumo consolidado</h2>
-          </div>
-          <div class="card-body" id="consumptionOverview">
-            <div class="consumption-overview-row">
-              <span>Consumo médio consolidado</span>
-              <strong id="dashConsumoConsolidado">— km/L</strong>
-            </div>
-            <div class="consumption-overview-row">
-              <span>Consumo estimado</span>
-              <strong id="dashConsumoEstimado">— km/L</strong>
-            </div>
-            <div class="consumption-overview-row">
-              <span>Média móvel dos últimos 3 blocos</span>
-              <strong id="dashMediaMovel">— km/L</strong>
-            </div>
-            <div class="consumption-overview-row">
-              <span>Nível de confiança</span>
-              <strong id="dashConfianca">—</strong>
-            </div>
-            <div class="consumption-warning" id="dashConfiancaMessage">Dados insuficientes para calcular uma média confiável.</div>
-          </div>
-        </div>
 
-        <!-- Last fill + KM log today -->
-        <div class="dashboard-grid">
-          <div class="card">
+
+        <!-- Main Dashboard Grid: Last Fill + Monthly Summary side by side -->
+        <div class="dashboard-grid main-stats-grid">
+          <div class="card last-fill-container">
             <div class="card-header">
               <h2 class="card-title">Último Abastecimento</h2>
             </div>
@@ -229,53 +206,54 @@
               <div class="empty-state"><span>⛽</span><p>Nenhum abastecimento registrado.</p></div>
             </div>
           </div>
-          <div class="card">
+
+          <div class="card monthly-summary-card">
             <div class="card-header">
-              <h2 class="card-title">KM de Hoje</h2>
+              <h2 class="card-title">Resumo do Mês</h2>
+              <span class="badge badge-primary" id="monthLabel"></span>
             </div>
-            <div class="card-body" id="kmTodayCard">
-              <div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>
+            <div class="card-body">
+              <div class="monthly-summary" id="monthlySummary">
+                <div class="summary-card">
+                  <div class="summary-icon">💰</div>
+                  <div class="summary-info">
+                    <span class="summary-label">Gastos</span>
+                    <span class="summary-value" id="msGasto">R$ 0,00</span>
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-icon">⛽</div>
+                  <div class="summary-info">
+                    <span class="summary-label">Litros</span>
+                    <span class="summary-value" id="msLitros">0 L</span>
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-icon">🛣️</div>
+                  <div class="summary-info">
+                    <span class="summary-label">KM Mês</span>
+                    <span class="summary-value" id="msKm">0 km</span>
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-icon">📅</div>
+                  <div class="summary-info">
+                    <span class="summary-label">Abast.</span>
+                    <span class="summary-value" id="msAbast">0</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Monthly summary -->
-        <div class="card monthly-summary-card">
+        <!-- Secondary section: KM Today -->
+        <div class="card km-today-card-container" style="margin-bottom: 2rem;">
           <div class="card-header">
-            <h2 class="card-title">Resumo do Mês</h2>
-            <span class="badge badge-primary" id="monthLabel"></span>
+            <h2 class="card-title">KM de Hoje</h2>
           </div>
-          <div class="card-body">
-            <div class="monthly-summary" id="monthlySummary">
-              <div class="summary-card">
-                <div class="summary-icon">💰</div>
-                <div class="summary-info">
-                  <span class="summary-label">Total Gasto</span>
-                  <span class="summary-value" id="msGasto">R$ 0,00</span>
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-icon">⛽</div>
-                <div class="summary-info">
-                  <span class="summary-label">Litros</span>
-                  <span class="summary-value" id="msLitros">0 L</span>
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-icon">🛣️</div>
-                <div class="summary-info">
-                  <span class="summary-label">KM Rodados</span>
-                  <span class="summary-value" id="msKm">0 km</span>
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-icon">📅</div>
-                <div class="summary-info">
-                  <span class="summary-label">Abastecimentos</span>
-                  <span class="summary-value" id="msAbast">0</span>
-                </div>
-              </div>
-            </div>
+          <div class="card-body" id="kmTodayCard">
+            <div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>
           </div>
         </div>
         
@@ -630,6 +608,13 @@
               </div>
               <input type="file" id="importFile" accept=".json" style="display:none;" />
             </label>
+            <button type="button" class="settings-item clickable" id="btnOpenTrash" onclick="console.log('Clique capturado no HTML'); if(typeof openTrash === 'function'){ openTrash(); } else { console.error('Função openTrash não encontrada no escopo global!'); }" style="width: 100%; border: none; background: transparent; text-align: left; cursor: pointer; color: inherit; font-family: inherit;">
+              <div class="settings-item-left">
+                <div class="settings-item-icon">🗑️</div>
+                <span class="settings-item-label">Lixeira</span>
+              </div>
+              <div class="settings-item-right">Ver</div>
+            </button>
           </div>
         </div>
 
@@ -851,6 +836,6 @@
   <!-- Toast -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

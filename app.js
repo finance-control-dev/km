@@ -174,6 +174,7 @@ function loadState() {
     if (raw) {
       state = { ...defaultState(), ...JSON.parse(raw) };
       state.fuelLogs = normalizeFuelLogs(state.fuelLogs);
+      state.trash = Array.isArray(state.trash) ? state.trash : [];
     }
   } catch (e) { console.warn('Failed to load state', e); }
 }
@@ -859,8 +860,8 @@ function saveFuel(e) {
   }
 
   // Update vehicle initial km if larger
-  const v = state.vehicles.find(v => v.id === state.activeVehicleId);
-  if (v && kmTotal > (v.kmInitial || 0)) { v.kmInitial = kmTotal; }
+  // const v = state.vehicles.find(v => v.id === state.activeVehicleId);
+  // if (v && kmTotal > (v.kmInitial || 0)) { v.kmInitial = kmTotal; }
 
   saveState();
   document.getElementById('fuelForm').reset();
@@ -877,25 +878,27 @@ async function deleteFuelLog(id) {
   const log = state.fuelLogs.find(l => l.id === id);
   if (!log) return;
 
-  const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
-  const trashItem = {
-    trashId,
-    type: 'fuel',
-    data: log,
-    deletedAt: new Date().toISOString()
-  };
+  openConfirm('Excluir Abastecimento', 'Deseja mover este abastecimento para a lixeira? 🗑️', async () => {
+    const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
+    const trashItem = {
+      trashId,
+      type: 'fuel',
+      data: log,
+      deletedAt: new Date().toISOString()
+    };
 
-  state.trash.push(trashItem);
-  state.fuelLogs = state.fuelLogs.filter(l => l.id !== id);
-  
-  saveState();
-  if (currentUser) {
-    try { await deleteDoc(doc(db, "users", currentUser.uid, "fuelLogs", id)); } catch(e){}
-  }
-  renderHistory();
-  renderDashboard();
-  syncToCloud();
-  toast('Abastecimento movido para a lixeira 🗑️', 'info');
+    state.trash.push(trashItem);
+    state.fuelLogs = state.fuelLogs.filter(l => l.id !== id);
+    
+    saveState();
+    if (currentUser) {
+      try { await deleteDoc(doc(db, "users", currentUser.uid, "fuelLogs", id)); } catch(e){}
+    }
+    renderHistory();
+    renderDashboard();
+    syncToCloud();
+    toast('Abastecimento movido para a lixeira 🗑️', 'info');
+  });
 }
 
 /* ==========================================
@@ -912,14 +915,29 @@ function saveKm(e) {
   }
 
   const date = document.getElementById('kmDate').value;
-  const kmStart = parseFloat(document.getElementById('kmStart').value) || 0;
+  let kmStart = parseFloat(document.getElementById('kmStart').value) || 0;
   const kmEnd = parseFloat(document.getElementById('kmEnd').value) || 0;
 
   if (!date) { toast('Informe a data.', 'error'); return; }
+
+  // Auto-fill kmStart if empty and kmEnd is provided
+  const editingId = document.getElementById('kmEditId').value;
+  if (!editingId && kmEnd && !kmStart) {
+    const v = getActiveVehicle();
+    const currentVFuel = state.fuelLogs.filter(l => l.vehicleId === state.activeVehicleId);
+    const currentVKm = state.kmLogs.filter(l => l.vehicleId === state.activeVehicleId);
+    const allKms = [
+      ...(currentVFuel.map(l => Number(l.kmTotal || 0))),
+      ...(currentVKm.map(l => Number(l.kmEnd || 0))),
+      (v ? Number(v.kmInitial || 0) : 0)
+    ];
+    kmStart = Math.max(...allKms, 0);
+    // Optionally update the UI field so the user sees what happened
+    document.getElementById('kmStart').value = kmStart;
+  }
+
   if (!kmStart && !kmEnd) { toast('Informe pelo menos o KM inicial ou final.', 'error'); return; }
   if (kmEnd && kmStart && kmEnd < kmStart) { toast('KM final não pode ser menor que KM inicial.', 'error'); return; }
-
-  const editingId = document.getElementById('kmEditId').value;
 
   const log = {
     id: editingId || uid(),
@@ -956,26 +974,28 @@ async function deleteKmLog(id) {
   const log = state.kmLogs.find(l => l.id === id);
   if (!log) return;
 
-  const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
-  const trashItem = {
-    trashId,
-    type: 'km',
-    data: log,
-    deletedAt: new Date().toISOString()
-  };
+  openConfirm('Excluir KM', 'Deseja mover este registro de KM para a lixeira? 🗑️', async () => {
+    const trashId = 'tr_' + Date.now() + Math.random().toString(36).substr(2, 4);
+    const trashItem = {
+      trashId,
+      type: 'km',
+      data: log,
+      deletedAt: new Date().toISOString()
+    };
 
-  state.trash.push(trashItem);
-  state.kmLogs = state.kmLogs.filter(l => l.id !== id);
-  
-  saveState();
-  if (currentUser) {
-    try { await deleteDoc(doc(db, "users", currentUser.uid, "kmLogs", id)); } catch(e){}
-  }
-  renderHistory();
-  renderDashboard();
-  renderKmToday();
-  syncToCloud();
-  toast('Registro de KM movido para a lixeira 🗑️', 'info');
+    state.trash.push(trashItem);
+    state.kmLogs = state.kmLogs.filter(l => l.id !== id);
+    
+    saveState();
+    if (currentUser) {
+      try { await deleteDoc(doc(db, "users", currentUser.uid, "kmLogs", id)); } catch(e){}
+    }
+    renderHistory();
+    renderDashboard();
+    renderKmToday();
+    syncToCloud();
+    toast('Registro de KM movido para a lixeira 🗑️', 'info');
+  });
 }
 
 /* ==========================================
@@ -991,33 +1011,51 @@ function renderDashboard() {
   const v = getActiveVehicle();
   const vId = v?.id || null;
 
-  const vFuel = vId ? state.fuelLogs.filter(l => l.vehicleId === vId) : [];
-  const vKm = vId ? state.kmLogs.filter(l => l.vehicleId === vId) : [];
+  console.log('renderDashboard - activeVehicleId:', state.activeVehicleId, 'vehicle:', v, 'vId:', vId);
+
+  const vFuel = vId ? state.fuelLogs.filter(l => String(l.vehicleId) === String(vId)).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)) : [];
+  const vKm = vId ? state.kmLogs.filter(l => String(l.vehicleId) === String(vId)).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)) : [];
 
   // Stats
-  const kmTotal = v ? (v.kmInitial || 0) : 0;
-  const gastoTotal = vFuel.reduce((s, l) => s + (l.totalCost || 0), 0);
-  const litrosTotal = vFuel.reduce((s, l) => s + (l.liters || 0), 0);
+  // Get latest KM by chronology (most recent date)
+  let currentKm = v ? Number(v.kmInitial || 0) : 0;
+  const lastFuel = vFuel[0];
+  const lastKm = vKm[0];
 
-  const consumoData = calcularConsumo(vFuel, {
-    litrosMinimos: 10,
-    qtdeAbastecimentos: 3
-  });
+  if (lastFuel && lastKm) {
+    const fuelDate = lastFuel.date + (lastFuel.createdAt ? lastFuel.createdAt : '');
+    const kmDate = lastKm.date + (lastKm.createdAt ? lastKm.createdAt : '');
+    currentKm = fuelDate >= kmDate ? Number(lastFuel.kmTotal || 0) : Number(lastKm.kmTotal || 0);
+  } else if (lastFuel) {
+    currentKm = Number(lastFuel.kmTotal || 0);
+  } else if (lastKm) {
+    currentKm = Number(lastKm.kmTotal || 0);
+  }
 
-  const mediaConsumo = consumoData.consumoConsolidado ? fmtNum(consumoData.consumoConsolidado, 1) + ' km/L' : '—';
-  const consumoEstimadoLabel = consumoData.consumoEstimado ? fmtNum(consumoData.consumoEstimado, 1) + ' km/L' : '—';
-  const mediaMovelLabel = consumoData.mediaMovel3Blocos ? fmtNum(consumoData.mediaMovel3Blocos, 1) + ' km/L' : '—';
-  const confiancaLabel = consumoData.confianca ? consumoData.confianca.toUpperCase() : '—';
+  const gastoTotal = vFuel.reduce((s, l) => s + Number(l.totalCost || 0), 0);
+  const litrosTotal = vFuel.reduce((s, l) => s + Number(l.liters || 0), 0);
 
-  document.getElementById('statKmTotal').textContent = fmtNum(kmTotal) + ' km';
+  document.getElementById('statKmTotal').textContent = fmtNum(currentKm) + ' km';
   document.getElementById('statGastoTotal').textContent = fmt(gastoTotal);
   document.getElementById('statLitrosTotal').textContent = fmtNum(litrosTotal, 1) + ' L';
-  document.getElementById('statMediaConsumo').textContent = mediaConsumo;
-  document.getElementById('dashConsumoConsolidado').textContent = mediaConsumo;
-  document.getElementById('dashConsumoEstimado').textContent = consumoEstimadoLabel;
-  document.getElementById('dashMediaMovel').textContent = mediaMovelLabel;
-  document.getElementById('dashConfianca').textContent = confiancaLabel;
-  document.getElementById('dashConfiancaMessage').style.display = consumoData.blocos.length ? 'none' : 'block';
+
+  // Improved consumption logic: (Last Fuel KM - First Fuel KM) / (Liters from 2nd fill onwards)
+  let mediaConsumo = -1;
+  if (vFuel.length >= 2) {
+    // vFuel is already sorted desc (newest first). Let's get asc.
+    const vFuelAsc = [...vFuel].sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
+    const firstFuel = vFuelAsc[0];
+    const lastFuelEntry = vFuelAsc[vFuelAsc.length - 1];
+    
+    const distanceDelta = Number(lastFuelEntry.kmTotal || 0) - Number(firstFuel.kmTotal || 0);
+    // Sum liters from second fill onwards (the fuel that filled the distance between first and last)
+    const consumedLiters = vFuelAsc.slice(1).reduce((s, l) => s + Number(l.liters || 0), 0);
+    
+    if (distanceDelta > 0 && consumedLiters > 0) {
+      mediaConsumo = distanceDelta / consumedLiters;
+    }
+  }
+  document.getElementById('statMediaConsumo').textContent = mediaConsumo > 0 ? (fmtNum(mediaConsumo, 2) + ' km/L') : '— km/L';
 
   // Last fill
   const lastFill = vFuel[0];
@@ -1085,7 +1123,19 @@ function renderDashboard() {
   document.getElementById('msGasto').textContent = fmt(monthFuel.reduce((s, l) => s + (l.totalCost || 0), 0));
   document.getElementById('msLitros').textContent = fmtNum(monthFuel.reduce((s, l) => s + (l.liters || 0), 0), 1) + ' L';
   document.getElementById('msAbast').textContent = monthFuel.length;
-  document.getElementById('msKm').textContent = fmtNum(monthKm.reduce((s, l) => s + (l.kmDiff || 0), 0)) + ' km';
+  
+  // Calculate Monthly KM Traveled (User Logic: Current KM - First KM of Month)
+  let monthlyKm = 0;
+  if (monthFuel.length > 0) {
+    const firstFuel = [...monthFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0];
+    const firstKmOfMonth = Number(firstFuel.kmTotal || 0);
+    monthlyKm = Math.max(0, currentKm - firstKmOfMonth);
+  } else if (monthKm.length > 0) {
+    const firstKmEntry = [...monthKm].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0];
+    const firstKmOfMonth = Number(firstKmEntry.kmStart || 0);
+    monthlyKm = Math.max(0, currentKm - firstKmOfMonth);
+  }
+  document.getElementById('msKm').textContent = fmtNum(monthlyKm) + ' km';
 
   // Maintenance Alerts
   const dashSummary = document.querySelector('#page-dashboard .page-header');
@@ -1216,14 +1266,9 @@ function renderHistory() {
 }
 
 function renderFuelHistory(vId) {
-  let fuelLogs = state.fuelLogs.filter(l => l.vehicleId === vId);
+  let fuelLogs = state.fuelLogs.filter(l => l.vehicleId === vId).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
   if (histFilterMonth) fuelLogs = fuelLogs.filter(l => l.date?.startsWith(histFilterMonth));
   if (histFilterFuelType) fuelLogs = fuelLogs.filter(l => l.fuelType === histFilterFuelType);
-
-  const consumptionData = calcularConsumo(fuelLogs, {
-    litrosMinimos: 10,
-    qtdeAbastecimentos: 3
-  });
 
   const container = document.getElementById('fuelHistoryList');
   if (!fuelLogs.length) {
@@ -1232,9 +1277,6 @@ function renderFuelHistory(vId) {
   }
 
     container.innerHTML = fuelLogs.map(l => {
-      const isClosed = consumptionData.registrosPorBloco[l.id] !== undefined;
-      const isCurrent = consumptionData.registrosNoBlocoAtual[l.id];
-      const statusBadge = isClosed ? '<span class="hist-badge closed-block">Bloco consolidado</span>' : isCurrent ? '<span class="hist-badge open-block">Bloco atual</span>' : '';
       const fullTankBadge = l.tanqueCheio ? '<span class="hist-badge full-tank">Tanque cheio</span>' : '';
       const stationHtml = l.station ? `<span class="hist-detail">⛽ <span>${escHtml(l.station)}</span></span>` : '';
 
@@ -1253,7 +1295,6 @@ function renderFuelHistory(vId) {
           ${stationHtml}
         </div>
         <div class="hist-item-tags">
-          ${statusBadge}
           ${fullTankBadge}
         </div>
         <div class="hist-item-actions">
@@ -1266,7 +1307,7 @@ function renderFuelHistory(vId) {
 }
 
 function renderKmHistory(vId) {
-  let logs = state.kmLogs.filter(l => l.vehicleId === vId);
+  let logs = state.kmLogs.filter(l => l.vehicleId === vId).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
   if (histFilterMonth) logs = logs.filter(l => l.date?.startsWith(histFilterMonth));
 
   const container = document.getElementById('kmHistoryList');
@@ -1280,7 +1321,7 @@ function renderKmHistory(vId) {
       <div class="hist-item-header">
         <div style="display:flex;align-items:center;gap:0.5rem;">
           <span>${purposeLabel(l.purpose)}</span>
-          <span class="hist-item-date">${formatDate(l.date)}</span>
+          <span class="hist-item-date">${formatDate(l.date)} ${formatTime(l.createdAt || new Date(l.date + 'T12:00:00').getTime())}</span>
         </div>
         <span class="hist-item-cost" style="color:var(--primary-light);">+${fmtNum(l.kmDiff)} km</span>
       </div>
@@ -1545,133 +1586,6 @@ function setupFuelFormDefaults() {
       document.getElementById('fuelKmTotal').value = v.kmInitial;
     }
   }
-}
-
-function calcularConsumo(registros, config = {}) {
-  const logs = normalizeFuelLogs(registros)
-    .filter(log => log.kmTotal > 0 && log.litros > 0)
-    .sort((a, b) => (a.kmTotal - b.kmTotal) || a.date.localeCompare(b.date || '') || ((a.createdAt || 0) - (b.createdAt || 0)));
-
-  const result = {
-    consumoConsolidado: null,
-    consumoEstimado: null,
-    mediaMovel3Blocos: null,
-    confianca: 'baixa',
-    blocos: [],
-    blocoAtual: null,
-    totalRegistrosValidos: logs.length,
-    registrosPorBloco: {},
-    registrosNoBlocoAtual: {}
-  };
-
-  if (!logs.length) return result;
-
-  let prevLog = null;
-  let currentBlock = null;
-
-  const pushClosedBlock = (closedBlock) => {
-    const index = result.blocos.length;
-    result.blocos.push({ ...closedBlock });
-    closedBlock.logIds.forEach(id => {
-      result.registrosPorBloco[id] = index;
-    });
-  };
-
-  for (const log of logs) {
-    if (!prevLog) {
-      currentBlock = {
-        inicioOdometro: log.kmTotal,
-        fimOdometro: log.kmTotal,
-        distancia: 0,
-        litros: 0,
-        consumoKmL: null,
-        quantidadeAbastecimentos: 1,
-        fechadoPor: null,
-        logIds: [log.id]
-      };
-      prevLog = log;
-      continue;
-    }
-
-    const distance = log.kmTotal - prevLog.kmTotal;
-    if (distance <= 0) {
-      continue;
-    }
-
-    currentBlock.logIds.push(log.id);
-    currentBlock.fimOdometro = log.kmTotal;
-    currentBlock.distancia = log.kmTotal - currentBlock.inicioOdometro;
-    currentBlock.litros += log.litros;
-    currentBlock.quantidadeAbastecimentos += 1;
-
-    const closedBy = log.tanqueCheio
-      ? 'tanque_cheio'
-      : currentBlock.litros >= (config.litrosMinimos || 10)
-        ? 'litros_minimos'
-        : currentBlock.quantidadeAbastecimentos >= (config.qtdeAbastecimentos || 3)
-          ? 'qtde_abastecimentos'
-          : null;
-
-    if (closedBy) {
-      currentBlock.fechadoPor = closedBy;
-      currentBlock.consumoKmL = currentBlock.litros > 0 ? currentBlock.distancia / currentBlock.litros : null;
-      pushClosedBlock(currentBlock);
-      currentBlock = {
-        inicioOdometro: log.kmTotal,
-        fimOdometro: log.kmTotal,
-        distancia: 0,
-        litros: 0,
-        consumoKmL: null,
-        quantidadeAbastecimentos: 1,
-        fechadoPor: null,
-        logIds: [log.id]
-      };
-    }
-
-    prevLog = log;
-  }
-
-  if (currentBlock && !currentBlock.fechadoPor && currentBlock.logIds.length > 1) {
-    result.blocoAtual = { ...currentBlock };
-    result.consumoEstimado = currentBlock.litros > 0 ? currentBlock.distancia / currentBlock.litros : null;
-    currentBlock.logIds.forEach(id => {
-      result.registrosNoBlocoAtual[id] = true;
-    });
-  } else {
-    result.blocoAtual = {
-      inicioOdometro: null,
-      fimOdometro: null,
-      distancia: 0,
-      litros: 0,
-      consumoKmL: null,
-      quantidadeAbastecimentos: 0,
-      fechadoPor: null,
-      logIds: []
-    };
-  }
-
-  if (result.blocos.length) {
-    const totalDistance = result.blocos.reduce((sum, bloco) => sum + (bloco.distancia || 0), 0);
-    const totalLiters = result.blocos.reduce((sum, bloco) => sum + (bloco.litros || 0), 0);
-    if (totalLiters > 0) {
-      result.consumoConsolidado = totalDistance / totalLiters;
-    }
-
-    const lastBlocks = result.blocos.slice(-3);
-    if (lastBlocks.length) {
-      result.mediaMovel3Blocos = lastBlocks.reduce((sum, bloco) => sum + (bloco.consumoKmL || 0), 0) / lastBlocks.length;
-    }
-    result.confianca = 'alta';
-  } else {
-    const openLiters = result.blocoAtual?.litros || 0;
-    if (openLiters >= 6) {
-      result.confianca = 'media';
-    } else {
-      result.confianca = 'baixa';
-    }
-  }
-
-  return result;
 }
 
 function setupKmFormDefaults() {
@@ -2131,16 +2045,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnExcel = document.getElementById('btnExportExcel');
   if (btnExcel) btnExcel.addEventListener('click', exportToExcel);
 
-  // --- Flex Logic 2.0
-  const openFlex = () => {
-    document.getElementById('flexModalBackdrop').classList.add('open');
-    document.getElementById('flexVisualArea').style.display = 'none';
-    document.getElementById('flexPriceGas').value = '';
-    document.getElementById('flexPriceAlc').value = '';
-  };
-
   const btnHeaderFlex = document.getElementById('headerFlexBtn');
   if (btnHeaderFlex) btnHeaderFlex.addEventListener('click', openFlex);
+
+  const btnHeaderVehicle = document.getElementById('iosVehicleIcon');
+  if (btnHeaderVehicle) btnHeaderVehicle.addEventListener('click', cycleVehicle);
 
   const btnCloseFlex = document.getElementById('closeFlexModal');
   if (btnCloseFlex) btnCloseFlex.addEventListener('click', () => {
@@ -2152,87 +2061,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(flexPriceGas) flexPriceGas.addEventListener('input', calculateFlex);
   if(flexPriceAlc) flexPriceAlc.addEventListener('input', calculateFlex);
 
-  // --- Trash Logic
-  function renderTrash() {
-    const list = document.getElementById('trashList');
-    if (!list) return;
-    
-    if (!state.trash || state.trash.length === 0) {
-      list.innerHTML = '<div class="empty-state"><span>🗑️</span><p>Lixeira vazia.</p></div>';
-      return;
-    }
-
-    list.innerHTML = state.trash.sort((a,b) => b.deletedAt.localeCompare(a.deletedAt)).map(item => {
-      let title = "Item Desconhecido";
-      let icon = "❓";
-      if (item.type === 'vehicle') { title = item.data.name; icon = "🚗"; }
-      if (item.type === 'fuel') { title = `Abast. ${fmt(item.data.totalCost)}`; icon = "⛽"; }
-      if (item.type === 'km') { title = `KM +${item.data.kmDiff}`; icon = "📍"; }
-
-      return `
-        <div class="trash-item">
-          <div class="trash-item-info">
-            <div class="trash-item-icon">${icon}</div>
-            <div class="trash-item-text">
-              <span class="trash-item-title">${title}</span>
-              <span class="trash-item-meta">Apagado em: ${formatDate(item.deletedAt.split('T')[0])}</span>
-            </div>
-          </div>
-          <div class="trash-item-actions">
-            <button class="btn btn-ghost btn-sm" onclick="restoreFromTrash('${item.trashId}')" title="Restaurar">🔄</button>
-            <button class="btn btn-ghost btn-danger btn-sm" onclick="permanentDelete('${item.trashId}')" title="Excluir Definitivamente">🛑</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  window.restoreFromTrash = (trashId) => {
-    const idx = state.trash.findIndex(i => i.trashId === trashId);
-    if (idx === -1) return;
-    const item = state.trash[idx];
-
-    if (item.type === 'vehicle') {
-      state.vehicles.push(item.data);
-      if (item.relatedData) {
-        if (item.relatedData.fuel) state.fuelLogs.push(...item.relatedData.fuel);
-        if (item.relatedData.km) state.kmLogs.push(...item.relatedData.km);
-      }
-      renderVehicles();
-    } else if (item.type === 'fuel') {
-      state.fuelLogs.push(item.data);
-    } else if (item.type === 'km') {
-      state.kmLogs.push(item.data);
-    }
-
-    state.trash.splice(idx, 1);
-    saveState();
-    renderTrash();
-    renderDashboard();
-    renderHistory();
-    syncToCloud();
-    toast('Item restaurado com sucesso! 🔄', 'success');
-  };
-
-  window.permanentDelete = (trashId) => {
-    openConfirm('Excluir Definitivamente', 'Esta ação eliminará os dados para sempre. Continuar?', async () => {
-      const idx = state.trash.findIndex(i => i.trashId === trashId);
-      if (idx !== -1 && currentUser) {
-        try { await deleteDoc(doc(db, "users", currentUser.uid, "trash", trashId)); } catch(e){}
-      }
-      state.trash = state.trash.filter(i => i.trashId !== trashId);
-      saveState();
-      renderTrash();
-      syncToCloud();
-      toast('Item excluído permanentemente.', 'error');
-    });
-  };
-
-  const btnOpenTrash = document.getElementById('btnOpenTrash');
-  if (btnOpenTrash) btnOpenTrash.addEventListener('click', () => {
-    document.getElementById('trashModalBackdrop').classList.add('open');
-    renderTrash();
-  });
+  // --- Trash Modal Buttons
 
   const btnCloseTrash = document.getElementById('closeTrashModal');
   if (btnCloseTrash) btnCloseTrash.addEventListener('click', () => {
@@ -2250,28 +2079,12 @@ document.addEventListener('DOMContentLoaded', () => {
       toast('Lixeira esvaziada! 🗑️', 'success');
     });
   });
-  setTimeout(() => {
-    if (currentUser && !state.onboardingComplete) {
-      startTour();
-    }
-  }, 1000);
-});
 
   // Final UI Auto-open adjustments
   if (state.vehicles.length === 0 && currentUser) {
     setTimeout(() => openVehicleModal(), 1000);
   }
 
-Object.assign(window, {
-  state,
-  setActiveVehicle,
-  openVehicleModal,
-  deleteVehicle,
-  editFuelLog,
-  deleteFuelLog,
-  editKmLog,
-  deleteKmLog
-});
   // --- Profile Pic Viewer Logic
   const avatar = document.getElementById('headerProfilePic');
   const viewer = document.getElementById('imageViewerModal');
@@ -2298,3 +2111,133 @@ Object.assign(window, {
       if (e.target === viewer) viewer.classList.remove('open');
     });
   }
+});
+
+// --- Flex Logic 2.0 (Global Scope)
+function openFlex() {
+  const backdrop = document.getElementById('flexModalBackdrop');
+  if (!backdrop) return;
+  backdrop.classList.add('open');
+  document.getElementById('flexVisualArea').style.display = 'none';
+  document.getElementById('flexPriceGas').value = '';
+  document.getElementById('flexPriceAlc').value = '';
+}
+
+// --- Trash Logic (Global Scope)
+function renderTrash() {
+  console.log('Executando renderTrash...');
+  const list = document.getElementById('trashList');
+  if (!list) {
+    console.error('Lixeira: lista (trashList) não encontrada!');
+    return;
+  }
+  
+  if (!state.trash || state.trash.length === 0) {
+    list.innerHTML = '<div class="empty-state"><span>🗑️</span><p>Lixeira vazia.</p></div>';
+    return;
+  }
+
+  list.innerHTML = state.trash.sort((a,b) => b.deletedAt.localeCompare(a.deletedAt)).map(item => {
+    let title = "Item Desconhecido";
+    let icon = "❓";
+    if (item.type === 'vehicle') { title = item.data.name; icon = "🚗"; }
+    if (item.type === 'fuel') { title = `Abast. ${fmt(item.data.totalCost)}`; icon = "⛽"; }
+    if (item.type === 'km') { title = `KM +${item.data.kmDiff}`; icon = "📍"; }
+
+    return `
+      <div class="trash-item">
+        <div class="trash-item-info">
+          <div class="trash-item-icon">${icon}</div>
+          <div class="trash-item-text">
+            <span class="trash-item-title">${title}</span>
+            <span class="trash-item-meta">Apagado em: ${formatDate(item.deletedAt.split('T')[0])}</span>
+          </div>
+        </div>
+        <div class="trash-item-actions">
+          <button class="btn btn-ghost btn-sm" onclick="restoreFromTrash('${item.trashId}')" title="Restaurar">🔄</button>
+          <button class="btn btn-ghost btn-danger btn-sm" onclick="permanentDelete('${item.trashId}')" title="Excluir Definitivamente">🛑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function restoreFromTrash(trashId) {
+  const idx = state.trash.findIndex(i => i.trashId === trashId);
+  if (idx === -1) return;
+  const item = state.trash[idx];
+
+  if (item.type === 'vehicle') {
+    state.vehicles.push(item.data);
+    if (item.relatedData) {
+      if (item.relatedData.fuel) state.fuelLogs.push(...item.relatedData.fuel);
+      if (item.relatedData.km) state.kmLogs.push(...item.relatedData.km);
+    }
+    renderVehicles();
+  } else if (item.type === 'fuel') {
+    state.fuelLogs.push(item.data);
+  } else if (item.type === 'km') {
+    state.kmLogs.push(item.data);
+  }
+
+  state.trash.splice(idx, 1);
+  saveState();
+  renderTrash();
+  renderDashboard();
+  renderHistory();
+  syncToCloud();
+  toast('Item restaurado com sucesso! 🔄', 'success');
+}
+
+function permanentDelete(trashId) {
+  openConfirm('Excluir Definitivamente', 'Esta ação eliminará os dados para sempre. Continuar?', async () => {
+    const idx = state.trash.findIndex(i => i.trashId === trashId);
+    if (idx !== -1 && currentUser) {
+      try { await deleteDoc(doc(db, "users", currentUser.uid, "trash", trashId)); } catch(e){}
+    }
+    state.trash = state.trash.filter(i => i.trashId !== trashId);
+    saveState();
+    renderTrash();
+    syncToCloud();
+    toast('Item excluído permanentemente.', 'error');
+  });
+}
+
+window.openTrash = function() {
+  console.log('Executando window.openTrash...');
+  const backdrop = document.getElementById('trashModalBackdrop');
+  if (backdrop) {
+    backdrop.classList.add('open');
+    renderTrash();
+  } else {
+    console.error('Lixeira: backdrop não encontrado!');
+  }
+};
+
+function cycleVehicle() {
+  if (state.vehicles.length < 2) return;
+  const currentIdx = state.vehicles.findIndex(v => v.id === state.activeVehicleId);
+  const nextIdx = (currentIdx + 1) % state.vehicles.length;
+  const nextVeh = state.vehicles[nextIdx];
+  if (nextVeh) {
+    setActiveVehicle(nextVeh.id);
+    toast(`Veículo alterado: ${nextVeh.name}`, 'success');
+  }
+}
+
+Object.assign(window, {
+  state,
+  setActiveVehicle,
+  openVehicleModal,
+  deleteVehicle,
+  editFuelLog,
+  deleteFuelLog,
+  editKmLog,
+  deleteKmLog,
+  restoreFromTrash,
+  permanentDelete,
+  calculateFlex,
+  openFlex,
+  openTrash,
+  cycleVehicle
+});

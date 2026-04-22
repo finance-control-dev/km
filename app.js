@@ -1041,16 +1041,19 @@ function renderDashboard() {
   document.getElementById('statLitrosTotal').textContent = fmtNum(litrosTotal, 1) + ' L';
 
   // Improved consumption logic: (Last Fuel KM - First Fuel KM) / (Liters from 2nd fill onwards)
+  // Editado conforme solicitação: Agora divide a distância total pela SOMA TOTAL de litros.
   let mediaConsumo = -1;
   if (vFuel.length >= 2) {
-    // vFuel is already sorted desc (newest first). Let's get asc.
     const vFuelAsc = [...vFuel].sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
     const firstFuel = vFuelAsc[0];
     const lastFuelEntry = vFuelAsc[vFuelAsc.length - 1];
     
+    // Podemos manter a distância como (Último KM de Abastecimento - Primeiro KM de Abastecimento)
+    // Ou usar a mesma lógica do KM MÊS.
     const distanceDelta = Number(lastFuelEntry.kmTotal || 0) - Number(firstFuel.kmTotal || 0);
-    // Sum liters from second fill onwards (the fuel that filled the distance between first and last)
-    const consumedLiters = vFuelAsc.slice(1).reduce((s, l) => s + Number(l.liters || 0), 0);
+    
+    // Soma TODOS os litros de todos os abastecimentos
+    const consumedLiters = vFuelAsc.reduce((s, l) => s + Number(l.liters || 0), 0);
     
     if (distanceDelta > 0 && consumedLiters > 0) {
       mediaConsumo = distanceDelta / consumedLiters;

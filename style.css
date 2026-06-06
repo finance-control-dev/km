@@ -436,9 +436,14 @@ input, textarea, select { font-family: inherit; }
 }
 
 @media (max-width: 700px) {
+  /* Keep dashboard and stats grids as two columns on narrow screens
+     so mobile matches the desktop visual (two-column cards). */
   .dashboard-grid,
+  #page-dashboard .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Main stats and monthly summary should stack to single column */
   .main-stats-grid,
-  #page-dashboard .stats-grid,
   .monthly-summary {
     grid-template-columns: 1fr;
   }

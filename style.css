@@ -62,21 +62,16 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-.install-banner-content {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
 .install-banner-icon {
   width: 56px;
   height: 56px;
   border-radius: 18px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.25);
 }
-
 .install-banner-text {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .install-banner-text strong {
@@ -84,12 +79,6 @@
   font-size: 1.15rem;
   margin-bottom: 4px;
   color: var(--text);
-}
-
-.install-banner-text span {
-  font-size: 0.92rem;
-  color: var(--text-muted);
-  line-height: 1.4;
 }
 
 .install-banner-actions {
@@ -288,6 +277,33 @@ input, textarea, select { font-family: inherit; }
 
 /* --- Page header (Large Titles) --- */
 .page-header { margin-bottom: 1.5rem; }
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.dash-month-selector-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dash-month-select {
+  width: auto;
+  padding: 0.4rem 2rem 0.4rem 1rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--surface2) url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236366f1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E') no-repeat right 0.75rem center;
+  background-size: 0.65rem auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
 .page-title { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.5px; }
 .page-subtitle { font-size: 0.9rem; color: var(--text-muted); margin-top: 4px; display: block; }
 
@@ -420,12 +436,16 @@ input, textarea, select { font-family: inherit; }
 }
 
 @media (max-width: 700px) {
+  .dashboard-grid,
+  .main-stats-grid,
+  #page-dashboard .stats-grid,
+  .monthly-summary {
+    grid-template-columns: 1fr;
+  }
   .dashboard-grid {
-    grid-template-columns: 1fr 1fr;
     gap: 1rem;
   }
   .main-stats-grid {
-    grid-template-columns: 1fr 1fr;
     gap: 1.25rem;
   }
   .stat-icon {
@@ -504,6 +524,18 @@ input, textarea, select { font-family: inherit; }
 }
 .form-group:last-child,
 .form-group.no-border { border-bottom: none; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 700px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 .checkbox-group { padding: 0.75rem 0; }
 .checkbox-label {
@@ -666,6 +698,127 @@ input, textarea, select { font-family: inherit; }
 .modal-close { font-size: 1rem; font-weight: 600; color: var(--primary); padding: 0.5rem; }
 .modal-body { padding: 1.5rem; }
 .modal-actions { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem; }
+
+.modal-sm #exportExcelForm {
+  display: grid;
+  gap: 1rem;
+}
+
+.modal-sm #exportExcelForm .form-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.modal-sm .form-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-sm .form-input {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 0.95rem 1rem;
+  background: var(--surface);
+}
+
+/* Improved month input appearance inside export modal */
+.modal-sm #exportExcelForm .form-group { position: relative; }
+.modal-sm input[type="month"].form-input,
+.modal-sm input[type="month"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 56px;
+  padding: 0 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+  color: var(--text);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.modal-sm input[type="month"]::placeholder {
+  color: var(--text-muted);
+}
+
+.modal-sm input[type="month"]::-webkit-clear-button,
+.modal-sm input[type="month"]::-webkit-inner-spin-button {
+  display: none;
+}
+
+.modal-sm input[type="month"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  color: var(--text-muted);
+  opacity: 0.95;
+}
+
+.modal-sm .form-label { margin-bottom: 0.5rem; }
+
+.modal-sm .form-row { gap: 1rem; }
+
+/* Month picker widget styles */
+.month-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.04);
+  background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));
+  min-height: 56px;
+}
+.month-display:focus { outline: 2px solid rgba(255,183,3,0.12); }
+.month-display-text { color: var(--text-muted); font-size: 1rem; }
+.month-display-icon { font-size: 1.05rem; color: var(--text-muted); }
+
+.month-picker {
+  display: none;
+  background: transparent;
+  margin-top: 1rem;
+  border-radius: 12px;
+}
+.month-picker[aria-hidden="false"], .month-picker.open { display: block; }
+.month-picker-header {
+  display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px;
+}
+.mp-year-label { font-weight: 800; font-size: 1.05rem; color: var(--text); }
+.mp-year-btn { background: var(--surface2); border-radius: 8px; padding: 6px 10px; color: var(--text); border: 1px solid var(--border); }
+.month-picker-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.month-picker-grid .mp-month {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.03);
+  border-radius: 50%;
+  width: 52px; height: 52px; display:flex; align-items:center; justify-content:center;
+  color: var(--text-muted); font-weight: 700; cursor: pointer; transition: all 0.15s ease;
+}
+.month-picker-grid .mp-month:hover { transform: translateY(-4px); }
+.month-picker-grid .mp-month.selected { background: var(--primary); color: #0a1121; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+.month-picker-actions { display:flex; justify-content: flex-end; gap: 0.75rem; margin-top: 12px; }
+
+@media (max-width: 560px) {
+  .month-picker-grid { grid-template-columns: repeat(3, 1fr); }
+  .month-picker-grid .mp-month { width: 46px; height: 46px; }
+}
+
+.modal-sm .export-help-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  .modal-sm #exportExcelForm .form-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Tab Bar Override (Top tabs inside pages) */
 .tab-bar { display: flex; background: rgba(118, 118, 128, 0.24); border-radius: 9px; padding: 2px; margin-bottom: 1.5rem; }
@@ -849,33 +1002,6 @@ input, textarea, select { font-family: inherit; }
 .filter-bar { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
 .filter-select { background: var(--surface); border: 1px solid var(--border); padding: 0.6rem 1rem; border-radius: 10px; width: 100%; color: var(--text); font-size: 0.9rem;}
 
-/* PWA Install Banner */
-.install-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: env(safe-area-inset-top) 1.25rem 0.75rem;
-  background: rgba(28, 28, 30, 0.95);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 0.5px solid var(--border);
-  transform: translateY(-110%);
-  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
-  flex-wrap: wrap;
-}
-.install-banner.visible { transform: translateY(0); }
-.install-banner-content { display: flex; align-items: center; gap: 0.9rem; flex: 1; min-width: 0; margin-top: 0.75rem;}
-.install-banner-icon { width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0; }
-.install-banner-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.install-banner-text strong { font-size: 0.875rem; font-weight: 700; color: var(--text); }
-.install-banner-text span { font-size: 0.75rem; color: var(--text-muted); line-height: 1.2; }
-.install-banner-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; margin-top: 0.75rem;}
-body.install-visible .ios-header { top: auto; margin-top: 70px; }
-
 /* Icon picker */
 .icon-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
 .icon-btn { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.5rem; background: var(--surface2); transition: all 0.2s; }
@@ -961,6 +1087,11 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 0.6rem 1.25rem;
+}
+.export-help-text {
+  margin: 0 1.25rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 .settings-list {
   background: var(--surface);
@@ -1450,11 +1581,6 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
 }
 .hero-emoji {
   font-size: 4rem;
-  display: block;
-  margin-bottom: 1rem;
-  filter: drop-shadow(0 0 20px rgba(10,132,255,0.4));
-}
-.hero-title {
   font-size: 2.5rem;
   font-weight: 800;
   letter-spacing: -1px;
@@ -1475,6 +1601,12 @@ body.install-visible .ios-header { top: auto; margin-top: 70px; }
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+.modal-sm .modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .btn-google {
   background: #fff;

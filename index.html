@@ -150,9 +150,16 @@
 
       <!-- ===== DASHBOARD ===== -->
       <section class="page active" id="page-dashboard">
-        <div class="page-header">
-          <h1 class="page-title">Dashboard</h1>
-          <span class="page-subtitle" id="dashDate"></span>
+        <div class="page-header dashboard-header">
+          <div>
+            <h1 class="page-title">Dashboard</h1>
+            <span class="page-subtitle" id="dashDate"></span>
+          </div>
+          <div class="dash-month-selector-container">
+            <select id="dashFilterMonth" class="dash-month-select">
+              <!-- Populado dinamicamente -->
+            </select>
+          </div>
         </div>
 
         <!-- Vehicle selector card -->
@@ -168,28 +175,28 @@
             <div class="stat-icon">🛣️</div>
             <div class="stat-info">
               <span class="stat-value" id="statKmTotal">0</span>
-              <span class="stat-label">KM Total</span>
+              <span class="stat-label">KM no Mês</span>
             </div>
           </div>
           <div class="stat-card success">
             <div class="stat-icon">💰</div>
             <div class="stat-info">
               <span class="stat-value" id="statGastoTotal">R$ 0,00</span>
-              <span class="stat-label">Gasto Total</span>
+              <span class="stat-label">Gasto no Mês</span>
             </div>
           </div>
           <div class="stat-card warning">
             <div class="stat-icon">⛽</div>
             <div class="stat-info">
               <span class="stat-value" id="statLitrosTotal">0 L</span>
-              <span class="stat-label">Total Litros</span>
+              <span class="stat-label">Litros no Mês</span>
             </div>
           </div>
           <div class="stat-card info">
             <div class="stat-icon">📊</div>
             <div class="stat-info">
               <span class="stat-value" id="statMediaConsumo">— km/L</span>
-              <span class="stat-label">Média Geral</span>
+              <span class="stat-label">Média no Mês</span>
             </div>
           </div>
         </div>
@@ -209,7 +216,7 @@
 
           <div class="card monthly-summary-card">
             <div class="card-header">
-              <h2 class="card-title">Resumo do Mês</h2>
+              <h2 class="card-title">Resumo Geral</h2>
               <span class="badge badge-primary" id="monthLabel"></span>
             </div>
             <div class="card-body">
@@ -231,7 +238,7 @@
                 <div class="summary-card">
                   <div class="summary-icon">🛣️</div>
                   <div class="summary-info">
-                    <span class="summary-label">KM Mês</span>
+                    <span class="summary-label">KM Total</span>
                     <span class="summary-value" id="msKm">0 km</span>
                   </div>
                 </div>
@@ -240,6 +247,13 @@
                   <div class="summary-info">
                     <span class="summary-label">Abast.</span>
                     <span class="summary-value" id="msAbast">0</span>
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-icon">📊</div>
+                  <div class="summary-info">
+                    <span class="summary-label">Média Consumo</span>
+                    <span class="summary-value" id="msMedia">— km/L</span>
                   </div>
                 </div>
               </div>
@@ -535,13 +549,6 @@
               </div>
               <div class="settings-item-right">Baixar</div>
             </div>
-            <div class="settings-item clickable" onclick="window.print()">
-              <div class="settings-item-left">
-                <div class="settings-item-icon">🖨️</div>
-                <span class="settings-item-label">Gerar Relatório PDF</span>
-              </div>
-              <div class="settings-item-right">Imprimir</div>
-            </div>
           </div>
         </div>
       </section>
@@ -818,18 +825,55 @@
     </div>
   </div>
 
-  <!-- PWA Install Banner (iOS/Android) -->
-  <div id="installBanner" class="install-banner">
-    <div class="install-content">
-      <div class="install-icon">📲</div>
-      <div class="install-text">
-        <strong>KM Track no seu celular</strong>
-        <span>Instale o app para acesso rápido e offline.</span>
+  <!-- Export Modal -->
+  <div class="modal-backdrop" id="exportModalBackdrop">
+    <div class="modal modal-sm" id="exportModal">
+      <div class="modal-header">
+        <h2 class="modal-title">Exportar para Excel</h2>
+        <button class="modal-close" id="closeExportModal">✕</button>
       </div>
-    </div>
-    <div class="install-actions">
-      <button class="btn btn-ghost btn-sm" id="btnDismissInstall">Agora não</button>
-      <button class="btn btn-primary btn-sm" id="btnInstallApp">Instalar</button>
+      <div class="modal-body">
+        <form id="exportExcelForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="exportMonthStartDisplay">Mês de início</label>
+              <div class="month-display" id="exportMonthStartDisplay" tabindex="0" role="button" aria-label="Selecionar mês de início">
+                <input type="hidden" id="exportMonthStart" />
+                <span class="month-display-text">— Selecionar mês —</span>
+                <span class="month-display-icon">📅</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="exportMonthEndDisplay">Mês de fim</label>
+              <div class="month-display" id="exportMonthEndDisplay" tabindex="0" role="button" aria-label="Selecionar mês de fim">
+                <input type="hidden" id="exportMonthEnd" />
+                <span class="month-display-text">— Selecionar mês —</span>
+                <span class="month-display-icon">📅</span>
+              </div>
+            </div>
+          </div>
+          <p class="export-help-text">Escolha o intervalo de meses para exportar. Mantenha em branco para exportar todos.</p>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="cancelExportModal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Exportar</button>
+          </div>
+        </form>
+        <!-- Month picker widget (in-modal) -->
+        <div id="monthPicker" class="month-picker" aria-hidden="true">
+          <div class="month-picker-header">
+            <button type="button" class="mp-year-btn" id="mpPrevYear">‹</button>
+            <div class="mp-year-label" id="mpYearLabel">2026</div>
+            <button type="button" class="mp-year-btn" id="mpNextYear">›</button>
+          </div>
+          <div class="month-picker-grid" id="mpMonthsGrid" role="list">
+            <!-- Month buttons generated by JS -->
+          </div>
+          <div class="month-picker-actions">
+            <button type="button" class="btn btn-ghost" id="mpClear">Limpar</button>
+            <button type="button" class="btn btn-primary" id="mpClose">Fechar</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

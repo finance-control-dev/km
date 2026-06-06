@@ -25,6 +25,7 @@ const googleProvider = new GoogleAuthProvider();
 
 let currentUser = null;
 let isSyncing = false;
+let selectedDashboardMonth = null;
 
 /* ==========================================
    PWA — SERVICE WORKER REGISTRATION
@@ -119,8 +120,8 @@ function suggestInstall() {
       
       // Ajuste de texto para usuários iOS (Apple não permite prompt automático)
       if (isIOS) {
-        const title = banner.querySelector('.install-text strong');
-        const desc = banner.querySelector('.install-text span');
+        const title = banner.querySelector('.install-banner-text strong');
+        const desc = banner.querySelector('.install-banner-text span');
         if (title) title.textContent = 'Instale no seu iPhone';
         if (desc) desc.textContent = 'Toque em Compartilhar -> Adicionar à Tela de Início';
         
@@ -635,6 +636,105 @@ function closeVehicleModal() {
   document.getElementById('vehicleModalBackdrop').classList.remove('open');
 }
 
+function openExportModal() {
+  document.getElementById('exportMonthStart').value = '';
+  document.getElementById('exportMonthEnd').value = '';
+  document.getElementById('exportModalBackdrop').classList.add('open');
+}
+
+function closeExportModal() {
+  document.getElementById('exportModalBackdrop').classList.remove('open');
+}
+
+/* Month picker logic for export modal */
+const monthNamesShort = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+let mpCurrentYear = (new Date()).getFullYear();
+let mpTargetInput = null; // id of hidden input being edited
+
+function renderMonthPicker(year) {
+  const grid = document.getElementById('mpMonthsGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mp-month';
+    b.dataset.month = String(i + 1).padStart(2, '0');
+    b.textContent = monthNamesShort[i];
+    // mark selected if matches target input value
+    const currentVal = document.getElementById(mpTargetInput)?.value;
+    if (currentVal && currentVal.slice(0,4) === String(year) && currentVal.slice(5,7) === b.dataset.month) {
+      b.classList.add('selected');
+    }
+    b.addEventListener('click', () => {
+      const hidden = document.getElementById(mpTargetInput);
+      hidden.value = `${year}-${b.dataset.month}`;
+      updateMonthDisplayFromHidden(mpTargetInput);
+      closeMonthPicker();
+    });
+    grid.appendChild(b);
+  }
+  document.getElementById('mpYearLabel').textContent = String(year);
+}
+
+function openMonthPicker(targetInputId) {
+  mpTargetInput = targetInputId;
+  const picker = document.getElementById('monthPicker');
+  // start year from existing value or current year
+  const existing = document.getElementById(mpTargetInput).value;
+  mpCurrentYear = existing ? parseInt(existing.slice(0,4)) : (new Date()).getFullYear();
+  renderMonthPicker(mpCurrentYear);
+  picker.setAttribute('aria-hidden', 'false');
+  picker.classList.add('open');
+}
+
+function closeMonthPicker() {
+  const picker = document.getElementById('monthPicker');
+  picker.setAttribute('aria-hidden', 'true');
+  picker.classList.remove('open');
+  mpTargetInput = null;
+}
+
+function updateMonthDisplayFromHidden(hiddenId) {
+  const hidden = document.getElementById(hiddenId);
+  const displayId = hiddenId === 'exportMonthStart' ? 'exportMonthStartDisplay' : 'exportMonthEndDisplay';
+  const display = document.getElementById(displayId);
+  const text = display.querySelector('.month-display-text');
+  if (!hidden.value) {
+    text.textContent = '— Selecionar mês —';
+  } else {
+    const [y,m] = hidden.value.split('-');
+    const date = new Date(parseInt(y), parseInt(m)-1, 1);
+    text.textContent = date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+  }
+}
+
+// Month picker controls
+document.addEventListener('click', (e) => {
+  const picker = document.getElementById('monthPicker');
+  if (!picker) return;
+  if (picker.classList.contains('open')) {
+    // if click outside picker and not on display, close
+    const isInside = picker.contains(e.target) || document.getElementById('exportMonthStartDisplay').contains(e.target) || document.getElementById('exportMonthEndDisplay').contains(e.target);
+    if (!isInside) closeMonthPicker();
+  }
+});
+
+document.getElementById('exportMonthStartDisplay').addEventListener('click', () => openMonthPicker('exportMonthStart'));
+document.getElementById('exportMonthEndDisplay').addEventListener('click', () => openMonthPicker('exportMonthEnd'));
+document.getElementById('mpPrevYear').addEventListener('click', () => { mpCurrentYear--; renderMonthPicker(mpCurrentYear); });
+document.getElementById('mpNextYear').addEventListener('click', () => { mpCurrentYear++; renderMonthPicker(mpCurrentYear); });
+document.getElementById('mpClose').addEventListener('click', () => closeMonthPicker());
+document.getElementById('mpClear').addEventListener('click', () => {
+  if (!mpTargetInput) return;
+  document.getElementById(mpTargetInput).value = '';
+  updateMonthDisplayFromHidden(mpTargetInput);
+  closeMonthPicker();
+});
+
+// Initialize displays (in case modal reused)
+updateMonthDisplayFromHidden('exportMonthStart');
+updateMonthDisplayFromHidden('exportMonthEnd');
+
 /* ==========================================
    VEHICLE CRUD
    ========================================== */
@@ -1004,10 +1104,8 @@ async function deleteKmLog(id) {
 
 function renderDashboard() {
   const today = todayStr();
-  const mk = currentMonthKey();
+  const currentMonth = currentMonthKey();
   document.getElementById('dashDate').textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-  const _d = new Date();
-  document.getElementById('monthLabel').textContent = String(_d.getMonth() + 1).padStart(2, '0') + '/' + String(_d.getFullYear()).slice(-2);
 
   const v = getActiveVehicle();
   const vId = v?.id || null;
@@ -1016,6 +1114,30 @@ function renderDashboard() {
 
   const vFuel = vId ? state.fuelLogs.filter(l => String(l.vehicleId) === String(vId)).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)) : [];
   const vKm = vId ? state.kmLogs.filter(l => String(l.vehicleId) === String(vId)).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)) : [];
+
+  // Populate Dashboard Month Selector dynamically
+  const allMonths = new Set([
+    ...vFuel.map(l => l.date?.slice(0, 7)),
+    ...vKm.map(l => l.date?.slice(0, 7)),
+  ].filter(Boolean));
+
+  allMonths.add(currentMonth);
+
+  const sortedMonths = [...allMonths].sort().reverse();
+
+  if (!selectedDashboardMonth || !allMonths.has(selectedDashboardMonth)) {
+    selectedDashboardMonth = currentMonth;
+  }
+
+  const dashMonthSelect = document.getElementById('dashFilterMonth');
+  if (dashMonthSelect) {
+    dashMonthSelect.innerHTML = sortedMonths.map(m => {
+      const [y, mo] = m.split('-');
+      let label = new Date(parseInt(y), parseInt(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      label = label.charAt(0).toUpperCase() + label.slice(1);
+      return `<option value="${m}" ${selectedDashboardMonth === m ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+  }
 
   // Stats
   // Get latest KM by chronology (most recent date)
@@ -1026,34 +1148,72 @@ function renderDashboard() {
   if (lastFuel && lastKm) {
     const fuelDate = lastFuel.date + (lastFuel.createdAt ? lastFuel.createdAt : '');
     const kmDate = lastKm.date + (lastKm.createdAt ? lastKm.createdAt : '');
-    currentKm = fuelDate >= kmDate ? Number(lastFuel.kmTotal || 0) : Number(lastKm.kmTotal || 0);
+    currentKm = fuelDate >= kmDate ? Number(lastFuel.kmTotal || 0) : Number(lastKm.kmEnd || lastKm.kmTotal || 0);
   } else if (lastFuel) {
     currentKm = Number(lastFuel.kmTotal || 0);
   } else if (lastKm) {
-    currentKm = Number(lastKm.kmTotal || 0);
+    currentKm = Number(lastKm.kmEnd || lastKm.kmTotal || 0);
   }
 
-  const gastoTotal = vFuel.reduce((s, l) => s + Number(l.totalCost || 0), 0);
-  const litrosTotal = vFuel.reduce((s, l) => s + Number(l.liters || 0), 0);
+  // Monthly stats calculations (filtered by selected month)
+  const monthFuel = vFuel.filter(l => l.date && l.date.startsWith(selectedDashboardMonth));
+  const monthKm = vKm.filter(l => l.date && l.date.startsWith(selectedDashboardMonth));
 
-  document.getElementById('statKmTotal').textContent = fmtNum(currentKm) + ' km';
+  const gastoTotal = monthFuel.reduce((s, l) => s + Number(l.totalCost || 0), 0);
+  const litrosTotal = monthFuel.reduce((s, l) => s + Number(l.liters || 0), 0);
+
+  // Calculate Monthly KM Traveled (User Logic: Current KM of Month - First KM of Month)
+  let firstKmOfMonth = null;
+  const monthFuelAsc = [...monthFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (a.createdAt || 0));
+  const monthKmAsc = [...monthKm].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (a.createdAt || 0));
+
+  const firstFuel = monthFuelAsc[0];
+  const firstKmEntry = monthKmAsc[0];
+
+  if (firstFuel && firstKmEntry) {
+    if (firstFuel.date <= firstKmEntry.date) {
+      firstKmOfMonth = Number(firstFuel.kmTotal || 0);
+    } else {
+      firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
+    }
+  } else if (firstFuel) {
+    firstKmOfMonth = Number(firstFuel.kmTotal || 0);
+  } else if (firstKmEntry) {
+    firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
+  }
+
+  const lastFuelMonth = monthFuelAsc[monthFuelAsc.length - 1];
+  const lastKmMonth = monthKmAsc[monthKmAsc.length - 1];
+
+  let lastKmOfMonth = null;
+  if (lastFuelMonth && lastKmMonth) {
+    if (lastFuelMonth.date >= lastKmMonth.date) {
+      lastKmOfMonth = Number(lastFuelMonth.kmTotal || 0);
+    } else {
+      lastKmOfMonth = Number(lastKmMonth.kmEnd || lastKmMonth.kmStart || 0);
+    }
+  } else if (lastFuelMonth) {
+    lastKmOfMonth = Number(lastFuelMonth.kmTotal || 0);
+  } else if (lastKmMonth) {
+    lastKmOfMonth = Number(lastKmMonth.kmEnd || lastKmMonth.kmStart || 0);
+  }
+
+  const isSelectedMonthCurrent = (selectedDashboardMonth === currentMonth);
+  const endKm = isSelectedMonthCurrent ? currentKm : (lastKmOfMonth !== null ? lastKmOfMonth : currentKm);
+  const monthlyKm = firstKmOfMonth !== null ? Math.max(0, endKm - firstKmOfMonth) : 0;
+
+  document.getElementById('statKmTotal').textContent = fmtNum(monthlyKm) + ' km';
   document.getElementById('statGastoTotal').textContent = fmt(gastoTotal);
   document.getElementById('statLitrosTotal').textContent = fmtNum(litrosTotal, 1) + ' L';
 
-  // Improved consumption logic: (Last Fuel KM - First Fuel KM) / (Liters from 2nd fill onwards)
-  // Editado conforme solicitação: Agora divide a distância total pela SOMA TOTAL de litros.
+  // Monthly consumption average logic
   let mediaConsumo = -1;
-  if (vFuel.length >= 2) {
-    const vFuelAsc = [...vFuel].sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
-    const firstFuel = vFuelAsc[0];
-    const lastFuelEntry = vFuelAsc[vFuelAsc.length - 1];
+  if (monthFuel.length >= 2) {
+    const firstFuelMonth = monthFuelAsc[0];
+    const lastFuelEntryMonth = monthFuelAsc[monthFuelAsc.length - 1];
     
-    // Podemos manter a distância como (Último KM de Abastecimento - Primeiro KM de Abastecimento)
-    // Ou usar a mesma lógica do KM MÊS.
-    const distanceDelta = Number(lastFuelEntry.kmTotal || 0) - Number(firstFuel.kmTotal || 0);
-    
-    // Soma TODOS os litros de todos os abastecimentos
-    const consumedLiters = vFuelAsc.reduce((s, l) => s + Number(l.liters || 0), 0);
+    const distanceDelta = Number(lastFuelEntryMonth.kmTotal || 0) - Number(firstFuelMonth.kmTotal || 0);
+    const consumedLiters = monthFuelAsc.reduce((s, l) => s + Number(l.liters || 0), 0);
     
     if (distanceDelta > 0 && consumedLiters > 0) {
       mediaConsumo = distanceDelta / consumedLiters;
@@ -1121,38 +1281,45 @@ function renderDashboard() {
     kmTodayCard.innerHTML = '<div class="empty-state"><span>📍</span><p>Nenhum registro de KM hoje.</p></div>';
   }
 
-  // Monthly summary
-  const monthFuel = vFuel.filter(l => l.date && l.date.startsWith(mk));
-  const monthKm = vKm.filter(l => l.date && l.date.startsWith(mk));
-  document.getElementById('msGasto').textContent = fmt(monthFuel.reduce((s, l) => s + (l.totalCost || 0), 0));
-  document.getElementById('msLitros').textContent = fmtNum(monthFuel.reduce((s, l) => s + (l.liters || 0), 0), 1) + ' L';
-  document.getElementById('msAbast').textContent = monthFuel.length;
-  
-  // Calculate Monthly KM Traveled (User Logic: Current KM - First KM of Month)
-  let firstKmOfMonth = null;
-  const firstFuel = monthFuel.length > 0 ? [...monthFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0] : null;
-  const firstKmEntry = monthKm.length > 0 ? [...monthKm].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0))[0] : null;
+  // Resumo Geral calculations (all-time totals for active vehicle)
+  const totalGastoGeral = vFuel.reduce((s, l) => s + Number(l.totalCost || 0), 0);
+  const totalLitrosGeral = vFuel.reduce((s, l) => s + Number(l.liters || 0), 0);
+  const totalAbastGeral = vFuel.length;
 
-  if (firstFuel && firstKmEntry) {
-    if (firstFuel.date <= firstKmEntry.date) {
-      firstKmOfMonth = Number(firstFuel.kmTotal || 0);
-    } else {
-      firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
+  const allKms = [
+    ...(v ? [Number(v.kmInitial || 0)] : []),
+    ...(vFuel.map(l => Number(l.kmTotal || 0))),
+    ...(vKm.map(l => Number(l.kmStart || 0))),
+    ...(vKm.map(l => Number(l.kmEnd || 0)))
+  ].filter(k => k > 0);
+  const minKm = allKms.length > 0 ? Math.min(...allKms) : 0;
+  const totalKmGeral = Math.max(0, currentKm - minKm);
+
+  document.getElementById('msGasto').textContent = fmt(totalGastoGeral);
+  document.getElementById('msLitros').textContent = fmtNum(totalLitrosGeral, 1) + ' L';
+  document.getElementById('msAbast').textContent = totalAbastGeral;
+  document.getElementById('msKm').textContent = fmtNum(totalKmGeral) + ' km';
+
+  // All-time average consumption (km/L)
+  let mediaGeralConsumo = -1;
+  const vFuelAsc = [...vFuel].sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
+  if (vFuelAsc.length >= 2) {
+    const firstFuelAll = vFuelAsc[0];
+    const lastFuelAll = vFuelAsc[vFuelAsc.length - 1];
+    const distAll = Number(lastFuelAll.kmTotal || 0) - Number(firstFuelAll.kmTotal || 0);
+    if (distAll > 0 && totalLitrosGeral > 0) {
+      mediaGeralConsumo = distAll / totalLitrosGeral;
     }
-  } else if (firstFuel) {
-    firstKmOfMonth = Number(firstFuel.kmTotal || 0);
-  } else if (firstKmEntry) {
-    firstKmOfMonth = Number(firstKmEntry.kmStart || firstKmEntry.kmEnd || 0);
   }
+  document.getElementById('msMedia').textContent = mediaGeralConsumo > 0 ? (fmtNum(mediaGeralConsumo, 2) + ' km/L') : '— km/L';
 
-  const monthlyKm = firstKmOfMonth !== null ? Math.max(0, currentKm - firstKmOfMonth) : 0;
-  document.getElementById('msKm').textContent = fmtNum(monthlyKm) + ' km';
+  document.getElementById('monthLabel').textContent = 'Geral';
 
   // Maintenance Alerts
   const dashSummary = document.querySelector('#page-dashboard .page-header');
   if (v && v.nextOilKm) {
-    const currentKm = v.currentKm || 0;
-    const remaining = v.nextOilKm - currentKm;
+    const currentKmValue = v.currentKm || 0;
+    const remaining = v.nextOilKm - currentKmValue;
     if (remaining < 1000) {
       const isDanger = remaining <= 0;
       // Remove old alert if exists
@@ -1178,11 +1345,11 @@ function renderDashboard() {
 
   // Document Alerts (IPVA, Licensing, Insurance)
   if (v) {
-    const today = new Date();
+    const todayDate = new Date();
     const checkDoc = (dateStr, label) => {
       if (!dateStr) return;
       const d = new Date(dateStr);
-      const diffDays = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
       if (diffDays <= 30) {
         const isExpired = diffDays <= 0;
         const alertId = `dash-doc-${label}`;
@@ -1709,7 +1876,7 @@ function renderStats() {
 
   const expenseLabels = Object.keys(expenseMap).reverse().map(k => {
     const [y, m] = k.split('-');
-    return new Date(y, m-1, 1).toLocaleDateString('pt-BR', { month: 'short' });
+    return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'short' });
   });
   const expenseValues = Object.values(expenseMap).reverse();
 
@@ -1753,25 +1920,60 @@ function renderStats() {
   }
 }
 
+function normalizeMonthKey(value) {
+  if (!value) return null;
+  const [year, month] = value.split('-');
+  if (!year || !month) return null;
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function getExportRange() {
+  const startInput = document.getElementById('exportMonthStart');
+  const endInput = document.getElementById('exportMonthEnd');
+  const start = normalizeMonthKey(startInput?.value);
+  const end = normalizeMonthKey(endInput?.value);
+  if (start && end && start > end) return { start: end, end: start };
+  return { start, end };
+}
+
+function isMonthInRange(dateStr, start, end) {
+  const month = dateStr?.slice(0, 7);
+  if (!month) return false;
+  if (start && month < start) return false;
+  if (end && month > end) return false;
+  return true;
+}
+
 function exportToExcel() {
   const v = getActiveVehicle();
-  if (!v) { toast('Selecione um veículo!', 'error'); return; }
+  if (!v) { toast('Selecione um veículo!', 'error'); return false; }
 
-  const fuelData = state.fuelLogs.filter(l => l.vehicleId === v.id).map(l => ({
-    Data: formatDate(l.date),
-    Combustivel: fuelLabel(l.fuelType),
-    Litros: l.liters,
-    'Preco/L': l.pricePerLiter,
-    Total: l.totalCost,
-    Odometro: l.kmTotal,
-    Posto: l.station || ''
-  }));
+  const { start, end } = getExportRange();
+  const fuelData = state.fuelLogs
+    .filter(l => l.vehicleId === v.id && isMonthInRange(l.date, start, end))
+    .map(l => ({
+      Data: formatDate(l.date),
+      Combustivel: fuelLabel(l.fuelType),
+      Litros: l.liters,
+      'Preco/L': l.pricePerLiter,
+      Total: l.totalCost,
+      Odometro: l.kmTotal,
+      Posto: l.station || ''
+    }));
+
+  if (!fuelData.length) {
+    toast('Nenhum registro encontrado no período selecionado.', 'info');
+    return false;
+  }
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(fuelData);
-  XLSX.utils.book_append_sheet(wb, ws, "Abastecimentos");
-  XLSX.writeFile(wb, `KM_Track_${v.name}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'Abastecimentos');
+
+  const rangeLabel = start || end ? `_${start || 'inicio'}_${end || 'fim'}` : '';
+  XLSX.writeFile(wb, `KM_Track_${v.name}${rangeLabel}.xlsx`);
   toast('Exportação concluída!', 'success');
+  return true;
 }
 
 function calculateFlex() {
@@ -1973,6 +2175,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Dashboard month filter
+  const dashFilterMonth = document.getElementById('dashFilterMonth');
+  if (dashFilterMonth) {
+    dashFilterMonth.addEventListener('change', (e) => {
+      selectedDashboardMonth = e.target.value;
+      renderDashboard();
+    });
+  }
+
   // History filters
   document.getElementById('filterMonth').addEventListener('change', (e) => {
     histFilterMonth = e.target.value;
@@ -2054,7 +2265,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Intelligence Phase Listeners
   const btnExcel = document.getElementById('btnExportExcel');
-  if (btnExcel) btnExcel.addEventListener('click', exportToExcel);
+  if (btnExcel) btnExcel.addEventListener('click', openExportModal);
+
+  const btnCloseExport = document.getElementById('closeExportModal');
+  if (btnCloseExport) btnCloseExport.addEventListener('click', closeExportModal);
+  const btnCancelExport = document.getElementById('cancelExportModal');
+  if (btnCancelExport) btnCancelExport.addEventListener('click', closeExportModal);
+  const exportForm = document.getElementById('exportExcelForm');
+  if (exportForm) exportForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (exportToExcel()) closeExportModal();
+  });
+  const exportBackdrop = document.getElementById('exportModalBackdrop');
+  if (exportBackdrop) exportBackdrop.addEventListener('click', (e) => {
+    if (e.target === exportBackdrop) closeExportModal();
+  });
 
   const btnHeaderFlex = document.getElementById('headerFlexBtn');
   if (btnHeaderFlex) btnHeaderFlex.addEventListener('click', openFlex);

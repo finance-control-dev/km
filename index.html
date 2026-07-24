@@ -131,6 +131,111 @@
     </div>
   </div>
 
+  <!-- Search Modal -->
+  <div id="searchModalBackdrop" class="modal-backdrop search-modal-backdrop">
+    <div class="modal search-modal">
+      <div class="modal-header">
+        <h2 class="modal-title">🔎 Busca avançada</h2>
+        <button class="modal-close" id="closeSearchModal" aria-label="Fechar busca">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-modal-summary" id="searchModalSummary">
+          <span class="search-pill">Ajuste filtros e encontre registros rapidamente.</span>
+        </div>
+
+        <div class="search-modal-form">
+          <div class="form-group">
+            <label class="form-label" for="searchModalQuery">Texto livre</label>
+            <input type="search" id="searchModalQuery" class="form-input" placeholder="Posto, observação, valor, combustível..." />
+          </div>
+
+          <div class="form-row search-grid">
+            <div class="form-group">
+              <label class="form-label" for="searchModalType">Tipo de registro</label>
+              <select id="searchModalType" class="form-input form-select">
+                <option value="all">Todos</option>
+                <option value="fuel">Abastecimentos</option>
+                <option value="km">KM Diário</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="searchModalPeriod">Período</label>
+              <select id="searchModalPeriod" class="form-input form-select">
+                <option value="all">Qualquer período</option>
+                <option value="today">Hoje</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+                <option value="month">Este mês</option>
+                <option value="3m">Últimos 3 meses</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row search-grid">
+            <div class="form-group search-date-group">
+              <label class="form-label" for="searchModalStartDate">Data inicial</label>
+              <input type="date" id="searchModalStartDate" class="form-input" />
+            </div>
+            <div class="form-group search-date-group">
+              <label class="form-label" for="searchModalEndDate">Data final</label>
+              <input type="date" id="searchModalEndDate" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-row search-grid">
+            <div class="form-group">
+              <label class="form-label" for="searchModalFuelType">Combustível</label>
+              <select id="searchModalFuelType" class="form-input form-select">
+                <option value="">Todos</option>
+                <option value="gasolina">Gasolina</option>
+                <option value="alcool">Álcool</option>
+                <option value="diesel">Diesel</option>
+                <option value="gnv">GNV</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="searchModalPurpose">Finalidade de KM</label>
+              <select id="searchModalPurpose" class="form-input form-select">
+                <option value="">Todas</option>
+                <option value="pessoal">Pessoal</option>
+                <option value="trabalho">Trabalho</option>
+                <option value="viagem">Viagem</option>
+                <option value="outros">Outros</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row search-grid">
+            <div class="form-group">
+              <label class="form-label" for="searchModalMinValue">Valor mínimo</label>
+              <input type="number" id="searchModalMinValue" class="form-input" placeholder="Ex: 50" step="0.01" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="searchModalMaxValue">Valor máximo</label>
+              <input type="number" id="searchModalMaxValue" class="form-input" placeholder="Ex: 500" step="0.01" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="searchModalSort">Ordenação</label>
+            <select id="searchModalSort" class="form-input form-select">
+              <option value="desc">Mais recentes primeiro</option>
+              <option value="asc">Mais antigos primeiro</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="search-modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnResetSearchModal">Limpar filtros</button>
+          <button type="button" class="btn btn-primary" id="btnApplySearchModal">Aplicar busca</button>
+        </div>
+
+        <div id="searchModalResults" class="search-results-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- App Shell -->
   <div id="app" style="display:none;">
 
@@ -141,6 +246,7 @@
         <span class="ios-brand-text">KM Track</span>
       </div>
       <div class="ios-header-actions">
+        <button class="header-action-btn" id="headerSearchBtn" title="Busca Avançada">🔍</button>
         <button class="header-action-btn" id="headerFlexBtn" title="Economia">💰</button>
         <button class="header-action-btn" id="iosVehicleIcon" title="Veículos">🚗</button>
         <button class="header-action-btn" id="nav-settings-header" title="Ajustes">⚙️</button>
@@ -256,6 +362,13 @@
                     <span class="summary-value" id="msMedia">— km/L</span>
                   </div>
                 </div>
+                <div class="summary-card">
+                  <div class="summary-icon">💸</div>
+                  <div class="summary-info">
+                    <span class="summary-label">Custo / KM</span>
+                    <span class="summary-value" id="msCostPerKm">—/km</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -298,6 +411,7 @@
                   <input type="number" id="fuelKmTotal" class="form-input" placeholder="Ex: 45230" min="0" step="1" required />
                   <span class="input-suffix">km</span>
                 </div>
+                <div id="fuelKmSuggestion" class="km-suggestion-chip" style="display:none;"></div>
               </div>
 
               <div class="form-group">
@@ -488,17 +602,20 @@
 
         <!-- Filters -->
         <div class="filter-bar" id="histFilters">
-          <select class="form-input filter-select" id="filterMonth">
-            <option value="">Todos os meses</option>
-          </select>
-          <select class="form-input filter-select" id="filterFuelType">
-            <option value="">Todos os combustíveis</option>
-            <option value="gasolina">⛽ Gasolina</option>
-            <option value="alcool">🌿 Álcool</option>
-            <option value="diesel">🛢️ Diesel</option>
-            <option value="gnv">💨 GNV</option>
-          </select>
-          <button class="btn btn-ghost btn-sm" id="btnClearFilters">✕ Limpar</button>
+          <input type="search" id="filterSearch" class="form-input filter-search-input" placeholder="🔍 Pesquisar posto, obs, km, valor..." />
+          <div class="filter-row">
+            <select class="form-input filter-select" id="filterMonth">
+              <option value="">Todos os meses</option>
+            </select>
+            <select class="form-input filter-select" id="filterFuelType">
+              <option value="">Todos os combustíveis</option>
+              <option value="gasolina">⛽ Gasolina</option>
+              <option value="alcool">🌿 Álcool</option>
+              <option value="diesel">🛢️ Diesel</option>
+              <option value="gnv">💨 GNV</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="btnClearFilters">✕ Limpar</button>
+          </div>
         </div>
 
         <!-- Fuel History Tab -->
@@ -857,6 +974,146 @@
             <button type="button" class="btn btn-primary" id="mpClose">Fechar</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Search Modal -->
+  <div class="modal-backdrop" id="searchModalBackdrop">
+    <div class="modal search-modal">
+      <div class="modal-header">
+        <h2 class="modal-title">🔍 Busca & Filtros Inteligentes</h2>
+        <button class="modal-close" id="closeSearchModal">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Search Input -->
+        <div class="form-group no-border" style="padding-top:0;">
+          <div class="smart-search-input-wrapper">
+            <span class="search-input-icon">🔍</span>
+            <input type="search" id="smartSearchQuery" class="form-input smart-search-input" placeholder="Pesquisar posto, obs, valor, km, local..." autocomplete="off" />
+            <button type="button" class="btn-clear-query" id="btnClearSearchQuery" style="display:none;">✕</button>
+          </div>
+        </div>
+
+        <!-- Quick Period Presets -->
+        <div class="search-section">
+          <label class="search-section-label">📅 Período</label>
+          <div class="period-chips-grid" id="periodChipsGrid">
+            <button type="button" class="chip-btn active" data-period="all">Todos</button>
+            <button type="button" class="chip-btn" data-period="today">Hoje</button>
+            <button type="button" class="chip-btn" data-period="week">Esta Semana</button>
+            <button type="button" class="chip-btn" data-period="month">Este Mês</button>
+            <button type="button" class="chip-btn" data-period="30days">Últimos 30 dias</button>
+            <button type="button" class="chip-btn" data-period="year">Este Ano</button>
+            <button type="button" class="chip-btn" data-period="custom">Customizado 📅</button>
+          </div>
+
+          <!-- Custom Date Range -->
+          <div id="customDateRangeContainer" class="form-row" style="display:none; margin-top: 0.75rem;">
+            <div class="form-group no-border">
+              <label class="form-label" for="searchDateStart">Data Início</label>
+              <input type="date" id="searchDateStart" class="form-input" />
+            </div>
+            <div class="form-group no-border">
+              <label class="form-label" for="searchDateEnd">Data Fim</label>
+              <input type="date" id="searchDateEnd" class="form-input" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Filters Toggle -->
+        <div class="search-section" style="margin-top: 1rem;">
+          <div class="filter-toggle-header" id="btnToggleMoreFilters">
+            <span>⚙️ Filtros Avançados</span>
+            <span id="moreFiltersArrow">▼</span>
+          </div>
+
+          <div id="moreFiltersContainer" style="display:none; margin-top: 0.75rem;">
+            <div class="form-row">
+              <div class="form-group no-border">
+                <label class="form-label" for="searchRecordType">Tipo de Registro</label>
+                <select id="searchRecordType" class="form-input form-select">
+                  <option value="all">Todos os Registros</option>
+                  <option value="fuel">⛽ Abastecimentos</option>
+                  <option value="km">📍 Registros de KM</option>
+                </select>
+              </div>
+
+              <div class="form-group no-border">
+                <label class="form-label" for="searchVehicle">Veículo</label>
+                <select id="searchVehicle" class="form-input form-select">
+                  <option value="all">Todos os Veículos</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group no-border">
+                <label class="form-label" for="searchFuelType">Combustível</label>
+                <select id="searchFuelType" class="form-input form-select">
+                  <option value="all">Todos os Combustíveis</option>
+                  <option value="gasolina">⛽ Gasolina</option>
+                  <option value="alcool">🌿 Álcool</option>
+                  <option value="diesel">🛢️ Diesel</option>
+                  <option value="gnv">💨 GNV</option>
+                </select>
+              </div>
+
+              <div class="form-group no-border">
+                <label class="form-label" for="searchKmPurpose">Finalidade (KM)</label>
+                <select id="searchKmPurpose" class="form-input form-select">
+                  <option value="all">Todas as Finalidades</option>
+                  <option value="pessoal">🏠 Pessoal</option>
+                  <option value="trabalho">💼 Trabalho</option>
+                  <option value="viagem">✈️ Viagem</option>
+                  <option value="outros">📦 Outros</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group no-border">
+                <label class="form-label" for="searchMinCost">Valor Mín. (R$)</label>
+                <input type="number" id="searchMinCost" class="form-input" placeholder="Ex: 50" min="0" step="1" />
+              </div>
+              <div class="form-group no-border">
+                <label class="form-label" for="searchMaxCost">Valor Máx. (R$)</label>
+                <input type="number" id="searchMaxCost" class="form-input" placeholder="Ex: 300" min="0" step="1" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live KPI Summary Banner -->
+        <div id="searchSummaryBanner" class="search-summary-banner" style="display:none;">
+          <div class="ss-banner-item">
+            <span class="ss-banner-label">Encontrados</span>
+            <span class="ss-banner-val" id="ssCount">0</span>
+          </div>
+          <div class="ss-banner-item">
+            <span class="ss-banner-label">Total Gasto</span>
+            <span class="ss-banner-val" id="ssTotalSpent">R$ 0,00</span>
+          </div>
+          <div class="ss-banner-item">
+            <span class="ss-banner-label">Total Litros</span>
+            <span class="ss-banner-val" id="ssTotalLiters">0 L</span>
+          </div>
+          <div class="ss-banner-item">
+            <span class="ss-banner-label">Total KM</span>
+            <span class="ss-banner-val" id="ssTotalKm">0 km</span>
+          </div>
+        </div>
+
+        <!-- Results List -->
+        <div id="searchResultsList" class="search-results-list" style="margin-top: 1rem;">
+          <!-- Items render here -->
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="btnClearSmartSearch">Limpar Filtros</button>
+        <button type="button" class="btn btn-primary" id="btnCloseSmartSearch">Fechar</button>
       </div>
     </div>
   </div>

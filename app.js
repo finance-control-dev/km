@@ -1307,6 +1307,13 @@ function renderDashboard() {
   }
   document.getElementById('msMedia').textContent = mediaGeralConsumo > 0 ? (fmtNum(mediaGeralConsumo, 2) + ' km/L') : '— km/L';
 
+  // All-time cost per km
+  const totalCostPerKm = totalKmGeral > 0 ? (totalGastoGeral / totalKmGeral) : 0;
+  const msCostPerKmEl = document.getElementById('msCostPerKm');
+  if (msCostPerKmEl) {
+    msCostPerKmEl.textContent = totalCostPerKm > 0 ? (fmt(totalCostPerKm) + '/km') : '—/km';
+  }
+
   document.getElementById('monthLabel').textContent = 'Geral';
 
   // Maintenance Alerts
@@ -1386,6 +1393,19 @@ function renderKmToday() {
 let histTab = 'fuel-history';
 let histFilterMonth = '';
 let histFilterFuelType = '';
+let histFilterSearch = '';
+let searchModalState = {
+  query: '',
+  type: 'all',
+  period: 'all',
+  startDate: '',
+  endDate: '',
+  fuelType: '',
+  purpose: '',
+  minValue: '',
+  maxValue: '',
+  sort: 'desc'
+};
 
 function renderHistory() {
   const vId = state.activeVehicleId;
@@ -1413,6 +1433,17 @@ function renderFuelHistory(vId) {
   let fuelLogs = state.fuelLogs.filter(l => l.vehicleId === vId).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
   if (histFilterMonth) fuelLogs = fuelLogs.filter(l => l.date?.startsWith(histFilterMonth));
   if (histFilterFuelType) fuelLogs = fuelLogs.filter(l => l.fuelType === histFilterFuelType);
+  if (histFilterSearch) {
+    const q = histFilterSearch.toLowerCase();
+    fuelLogs = fuelLogs.filter(l => 
+      (l.station && l.station.toLowerCase().includes(q)) ||
+      (l.notes && l.notes.toLowerCase().includes(q)) ||
+      (l.fuelType && fuelLabel(l.fuelType).toLowerCase().includes(q)) ||
+      (l.totalCost && fmt(l.totalCost).toLowerCase().includes(q)) ||
+      (l.kmTotal && String(l.kmTotal).includes(q)) ||
+      (l.date && formatDate(l.date).includes(q))
+    );
+  }
 
   const container = document.getElementById('fuelHistoryList');
   if (!fuelLogs.length) {
@@ -1453,6 +1484,17 @@ function renderFuelHistory(vId) {
 function renderKmHistory(vId) {
   let logs = state.kmLogs.filter(l => l.vehicleId === vId).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
   if (histFilterMonth) logs = logs.filter(l => l.date?.startsWith(histFilterMonth));
+  if (histFilterSearch) {
+    const q = histFilterSearch.toLowerCase();
+    logs = logs.filter(l => 
+      (l.notes && l.notes.toLowerCase().includes(q)) ||
+      (l.purpose && purposeLabel(l.purpose).toLowerCase().includes(q)) ||
+      (l.kmDiff && String(l.kmDiff).includes(q)) ||
+      (l.kmStart && String(l.kmStart).includes(q)) ||
+      (l.kmEnd && String(l.kmEnd).includes(q)) ||
+      (l.date && formatDate(l.date).includes(q))
+    );
+  }
 
   const container = document.getElementById('kmHistoryList');
   if (!logs.length) {
@@ -1480,6 +1522,250 @@ function renderKmHistory(vId) {
       </div>
     </div>
   `).join('');
+}
+
+/* ==========================================
+   SEARCH MODAL
+   ========================================== */
+
+function formatSearchDate(value) {
+  if (!value) return '';
+  const d = new Date(value + 'T00:00:00');
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function getSearchModalDateRange() {
+  const { period, startDate, endDate } = searchModalState;
+  const today = todayStr();
+
+  if (period === 'today') {
+    return { start: today, end: today };
+  }
+
+  if (period === '7d') {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return { start: d.toISOString().slice(0, 10), end: today };
+  }
+
+  if (period === '30d') {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return { start: d.toISOString().slice(0, 10), end: today };
+  }
+
+  if (period === 'month') {
+    const now = new Date();
+    const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const end = today;
+    return { start, end };
+  }
+
+  if (period === '3m') {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    return { start: start.toISOString().slice(0, 10), end: today };
+  }
+
+  if (period === 'custom') {
+    return { start: startDate || '', end: endDate || '' };
+  }
+
+  return { start: '', end: '' };
+}
+
+function syncSearchModalInputs() {
+  const query = document.getElementById('searchModalQuery');
+  const type = document.getElementById('searchModalType');
+  const period = document.getElementById('searchModalPeriod');
+  const startDate = document.getElementById('searchModalStartDate');
+  const endDate = document.getElementById('searchModalEndDate');
+  const fuelType = document.getElementById('searchModalFuelType');
+  const purpose = document.getElementById('searchModalPurpose');
+  const minValue = document.getElementById('searchModalMinValue');
+  const maxValue = document.getElementById('searchModalMaxValue');
+  const sort = document.getElementById('searchModalSort');
+
+  if (query) query.value = searchModalState.query || '';
+  if (type) type.value = searchModalState.type || 'all';
+  if (period) period.value = searchModalState.period || 'all';
+  if (startDate) startDate.value = searchModalState.startDate || '';
+  if (endDate) endDate.value = searchModalState.endDate || '';
+  if (fuelType) fuelType.value = searchModalState.fuelType || '';
+  if (purpose) purpose.value = searchModalState.purpose || '';
+  if (minValue) minValue.value = searchModalState.minValue || '';
+  if (maxValue) maxValue.value = searchModalState.maxValue || '';
+  if (sort) sort.value = searchModalState.sort || 'desc';
+
+  const dateGroups = document.querySelectorAll('.search-date-group');
+  const showCustom = (searchModalState.period || 'all') === 'custom';
+  dateGroups.forEach(group => {
+    group.style.display = showCustom ? 'block' : 'none';
+  });
+}
+
+function readSearchModalState() {
+  const query = document.getElementById('searchModalQuery')?.value.trim() || '';
+  const type = document.getElementById('searchModalType')?.value || 'all';
+  const period = document.getElementById('searchModalPeriod')?.value || 'all';
+  const startDate = document.getElementById('searchModalStartDate')?.value || '';
+  const endDate = document.getElementById('searchModalEndDate')?.value || '';
+  const fuelType = document.getElementById('searchModalFuelType')?.value || '';
+  const purpose = document.getElementById('searchModalPurpose')?.value || '';
+  const minValue = document.getElementById('searchModalMinValue')?.value || '';
+  const maxValue = document.getElementById('searchModalMaxValue')?.value || '';
+  const sort = document.getElementById('searchModalSort')?.value || 'desc';
+
+  searchModalState = { query, type, period, startDate, endDate, fuelType, purpose, minValue, maxValue, sort };
+  return searchModalState;
+}
+
+function renderSearchModalResults() {
+  const container = document.getElementById('searchModalResults');
+  const summary = document.getElementById('searchModalSummary');
+  if (!container || !summary) return;
+
+  const stateCopy = readSearchModalState();
+  const vId = state.activeVehicleId;
+  if (!vId) {
+    container.innerHTML = '<div class="search-empty">Adicione um veículo para começar a buscar registros.</div>';
+    summary.innerHTML = '<span class="search-pill">Nenhum veículo selecionado.</span>';
+    return;
+  }
+
+  const { start, end } = getSearchModalDateRange();
+  const query = (stateCopy.query || '').toLowerCase();
+  const minValue = stateCopy.minValue !== '' ? Number(stateCopy.minValue) : null;
+  const maxValue = stateCopy.maxValue !== '' ? Number(stateCopy.maxValue) : null;
+
+  let results = [];
+  let totalFuelCost = 0;
+  let totalFuelLiters = 0;
+  let totalKm = 0;
+  const fuelLogs = state.fuelLogs.filter(l => l.vehicleId === vId);
+  const kmLogs = state.kmLogs.filter(l => l.vehicleId === vId);
+
+  fuelLogs.forEach(log => {
+    const value = Number(log.totalCost || 0);
+    let matches = true;
+    if (stateCopy.type !== 'all' && stateCopy.type !== 'fuel') matches = false;
+    if (query && !`${log.station || ''} ${log.notes || ''} ${fuelLabel(log.fuelType)} ${fmt(value)} ${formatDate(log.date)}`.toLowerCase().includes(query)) matches = false;
+    if (stateCopy.fuelType && log.fuelType !== stateCopy.fuelType) matches = false;
+    if (start && log.date < start) matches = false;
+    if (end && log.date > end) matches = false;
+    if (minValue !== null && value < minValue) matches = false;
+    if (maxValue !== null && value > maxValue) matches = false;
+
+    if (matches) {
+      totalFuelCost += Number(log.totalCost || 0);
+      totalFuelLiters += Number(log.liters || 0);
+      results.push({
+        id: log.id,
+        type: 'fuel',
+        date: log.date,
+        title: `${fuelEmoji(log.fuelType)} ${fuelLabel(log.fuelType)}`,
+        subtitle: log.station ? `Posto: ${escHtml(log.station)}` : 'Abastecimento',
+        meta: `${formatDate(log.date)} • ${fmtNum(log.liters, 2)} L • ${fmt(log.totalCost)}`,
+        value: fmt(log.totalCost),
+        editAction: `editFuelLog('${log.id}')`
+      });
+    }
+  });
+
+  kmLogs.forEach(log => {
+    const value = Number(log.kmDiff || 0);
+    let matches = true;
+    if (stateCopy.type !== 'all' && stateCopy.type !== 'km') matches = false;
+    if (query && !`${log.notes || ''} ${purposeLabel(log.purpose)} ${fmtNum(value)} ${formatDate(log.date)}`.toLowerCase().includes(query)) matches = false;
+    if (stateCopy.purpose && log.purpose !== stateCopy.purpose) matches = false;
+    if (start && log.date < start) matches = false;
+    if (end && log.date > end) matches = false;
+    if (minValue !== null && value < minValue) matches = false;
+    if (maxValue !== null && value > maxValue) matches = false;
+
+    if (matches) {
+      totalKm += Number(log.kmDiff || 0);
+      results.push({
+        id: log.id,
+        type: 'km',
+        date: log.date,
+        title: `${purposeIcon(log.purpose)} ${purposeLabel(log.purpose)}`,
+        subtitle: log.notes ? `Obs: ${escHtml(log.notes)}` : 'Registro de quilometragem',
+        meta: `${formatDate(log.date)} • ${fmtNum(log.kmDiff)} km`,
+        value: `${fmtNum(log.kmDiff)} km`,
+        editAction: `editKmLog('${log.id}')`
+      });
+    }
+  });
+
+  results.sort((a, b) => {
+    if (stateCopy.sort === 'asc') return a.date.localeCompare(b.date);
+    return b.date.localeCompare(a.date);
+  });
+
+  const countLabel = results.length === 1 ? '1 resultado' : `${results.length} resultados`;
+  const fuelCount = results.filter(item => item.type === 'fuel').length;
+  const kmCount = results.filter(item => item.type === 'km').length;
+  summary.innerHTML = `
+    <span class="search-pill">${countLabel}</span>
+    <span class="search-pill">💰 Total gasto: ${fmt(totalFuelCost)}</span>
+    <span class="search-pill">⛽ Total litros: ${fmtNum(totalFuelLiters, 2)} L</span>
+    <span class="search-pill">📍 Total KM: ${fmtNum(totalKm)} km</span>
+    <span class="search-pill">${fuelCount} abastecimento${fuelCount === 1 ? '' : 's'}</span>
+    <span class="search-pill">${kmCount} registro${kmCount === 1 ? '' : 's'} de KM</span>
+  `;
+
+  if (!results.length) {
+    container.innerHTML = '<div class="search-empty">Nenhum registro encontrado com esses filtros. Tente ajustar os critérios.</div>';
+    return;
+  }
+
+  container.innerHTML = results.map(item => `
+    <div class="search-result-card">
+      <div class="search-result-header">
+        <span class="search-result-title">${item.title}</span>
+        <span class="search-result-value">${item.value}</span>
+      </div>
+      <div class="search-result-meta">
+        <span>${item.subtitle}</span>
+        <span>•</span>
+        <span>${item.meta}</span>
+      </div>
+      <div class="search-result-actions">
+        <button class="btn btn-ghost btn-sm" onclick="${item.editAction}">✏️ Abrir</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function resetSearchModal() {
+  searchModalState = {
+    query: '',
+    type: 'all',
+    period: 'all',
+    startDate: '',
+    endDate: '',
+    fuelType: '',
+    purpose: '',
+    minValue: '',
+    maxValue: '',
+    sort: 'desc'
+  };
+  syncSearchModalInputs();
+  renderSearchModalResults();
+}
+
+function openSearchModal() {
+  const backdrop = document.getElementById('searchModalBackdrop');
+  if (!backdrop) return;
+  syncSearchModalInputs();
+  renderSearchModalResults();
+  backdrop.classList.add('open');
+}
+
+function closeSearchModal() {
+  const backdrop = document.getElementById('searchModalBackdrop');
+  if (backdrop) backdrop.classList.remove('open');
 }
 
 /* ==========================================
@@ -1725,6 +2011,34 @@ function setupFuelFormDefaults() {
 
   // Ensure odometer field is blank by default when registering a new fuel fill-up
   document.getElementById('fuelKmTotal').value = '';
+
+  // Smart suggestion chip for highest recorded KM so far
+  const sugChip = document.getElementById('fuelKmSuggestion');
+  if (sugChip) {
+    let highestKm = 0;
+    if (state.activeVehicleId) {
+      const v = getActiveVehicle();
+      const currentVFuel = state.fuelLogs.filter(l => l.vehicleId === state.activeVehicleId);
+      const currentVKm = state.kmLogs.filter(l => l.vehicleId === state.activeVehicleId);
+      const allKms = [
+        ...(currentVFuel.map(l => Number(l.kmTotal || 0))),
+        ...(currentVKm.map(l => Number(l.kmEnd || 0))),
+        (v ? Number(v.kmInitial || 0) : 0)
+      ];
+      highestKm = Math.max(...allKms, 0);
+    }
+    if (highestKm > 0) {
+      sugChip.innerHTML = `<span>📍 Último KM: <strong>${fmtNum(highestKm)} km</strong> (toque para preencher)</span>`;
+      sugChip.style.display = 'inline-flex';
+      sugChip.onclick = () => {
+        document.getElementById('fuelKmTotal').value = highestKm;
+        recalcFuelCost();
+        toast('Odômetro preenchido!', 'info');
+      };
+    } else {
+      sugChip.style.display = 'none';
+    }
+  }
 }
 
 function setupKmFormDefaults() {
@@ -2012,6 +2326,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const btnSearchHeader = document.getElementById('headerSearchBtn');
+  if (btnSearchHeader) {
+    btnSearchHeader.addEventListener('click', openSearchModal);
+  }
+
   const btnVehicleHeader = document.getElementById('iosVehicleBtn');
   if (btnVehicleHeader) {
     btnVehicleHeader.addEventListener('click', () => navigateTo('vehicles'));
@@ -2146,6 +2465,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // History filters
+  const filterSearchInput = document.getElementById('filterSearch');
+  if (filterSearchInput) {
+    filterSearchInput.addEventListener('input', (e) => {
+      histFilterSearch = e.target.value;
+      renderHistory();
+    });
+  }
+
   document.getElementById('filterMonth').addEventListener('change', (e) => {
     histFilterMonth = e.target.value;
     renderHistory();
@@ -2159,8 +2486,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnClearFilters) btnClearFilters.addEventListener('click', () => {
     histFilterMonth = '';
     histFilterFuelType = '';
+    histFilterSearch = '';
     document.getElementById('filterMonth').value = '';
-    document.getElementById('filterFuelType').value = '';
+    if (document.getElementById('filterFuelType')) document.getElementById('filterFuelType').value = '';
+    if (filterSearchInput) filterSearchInput.value = '';
     renderHistory();
   });
 

@@ -613,9 +613,6 @@ function openVehicleModal(vehicleOrId) {
     document.getElementById('vehiclePlate').value = vehicle.plate || '';
     document.getElementById('vehicleKmInitial').value = vehicle.kmInitial || 0;
     document.getElementById('vehicleNextOil').value = vehicle.nextOilKm || '';
-    document.getElementById('vehicleIpvaDate').value = vehicle.ipvaDate || '';
-    document.getElementById('vehicleInsuranceDate').value = vehicle.insuranceDate || '';
-    document.getElementById('vehicleLicenseDate').value = vehicle.licenseDate || '';
     document.getElementById('vehicleIcon').value = vehicle.icon || '🚗';
     // Update icon picker
     document.querySelectorAll('.icon-btn').forEach(b => {
@@ -751,9 +748,6 @@ function saveVehicle(e) {
     plate: document.getElementById('vehiclePlate').value.trim().toUpperCase(),
     kmInitial: parseFloat(document.getElementById('vehicleKmInitial').value) || 0,
     nextOilKm: parseFloat(document.getElementById('vehicleNextOil').value) || null,
-    ipvaDate: document.getElementById('vehicleIpvaDate').value,
-    insuranceDate: document.getElementById('vehicleInsuranceDate').value,
-    licenseDate: document.getElementById('vehicleLicenseDate').value,
     icon: document.getElementById('vehicleIcon').value,
     createdAt: id ? (state.vehicles.find(v => v.id === id)?.createdAt || Date.now()) : Date.now(),
   };
@@ -1343,35 +1337,7 @@ function renderDashboard() {
     }
   }
 
-  // Document Alerts (IPVA, Licensing, Insurance)
-  if (v) {
-    const todayDate = new Date();
-    const checkDoc = (dateStr, label) => {
-      if (!dateStr) return;
-      const d = new Date(dateStr);
-      const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
-      if (diffDays <= 30) {
-        const isExpired = diffDays <= 0;
-        const alertId = `dash-doc-${label}`;
-        if (document.getElementById(alertId)) return;
-        const docAlert = document.createElement('div');
-        docAlert.id = alertId;
-        docAlert.className = `maintenance-card ${isExpired ? 'danger' : ''}`;
-        docAlert.style.marginTop = '0.5rem';
-        docAlert.innerHTML = `
-          <div class="maintenance-icon">📄</div>
-          <div class="maintenance-text">
-            <h4>${label} ${isExpired ? 'Vencido' : 'Próximo'}</h4>
-            <p>${isExpired ? 'Venceu em' : 'Vence em'} ${formatDate(dateStr)} (${diffDays} dias).</p>
-          </div>
-        `;
-        dashSummary.after(docAlert);
-      }
-    };
-    checkDoc(v.ipvaDate, 'IPVA');
-    checkDoc(v.licenseDate, 'Licenciamento');
-    checkDoc(v.insuranceDate, 'Seguro');
-  }
+
 
   // Update vehicle selector
   updateVehicleUI();
@@ -1757,13 +1723,8 @@ function setupFuelFormDefaults() {
   document.getElementById('fuelPricePerLiter').required = true;
   document.getElementById('fuelPricePerLiterTotal').required = false;
 
-  // Pre-fill odometer with last known KM
-  if (state.activeVehicleId) {
-    const v = getActiveVehicle();
-    if (v && v.kmInitial) {
-      document.getElementById('fuelKmTotal').value = v.kmInitial;
-    }
-  }
+  // Ensure odometer field is blank by default when registering a new fuel fill-up
+  document.getElementById('fuelKmTotal').value = '';
 }
 
 function setupKmFormDefaults() {
